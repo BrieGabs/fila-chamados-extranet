@@ -391,17 +391,16 @@ O `main` é protegido: a versão entra por pull request, como qualquer outra mud
 2. Registre as mudanças no `CHANGELOG.md`, numa seção nova com a versão e a data.
 3. Rode o `Testar.ps1` no Windows e confira se termina com `OK`.
 4. Faça o commit, envie a branch e abra o pull request. Faça o merge quando os testes passarem.
-5. Atualize o `main` local, crie a tag e envie: `git tag -a vX.Y.Z -m "Versão X.Y.Z"` e `git push origin vX.Y.Z`.
-6. Gere o ZIP e publique a release, com o SHA-256 do ZIP nas notas:
+5. Atualize o `main` local, crie a tag e envie:
 
    ```
-   git archive --prefix=fila-chamados/ -o fila-chamados.zip vX.Y.Z
-   gh release create vX.Y.Z fila-chamados.zip --title "vX.Y.Z" --notes "Veja o CHANGELOG.md"
+   git tag -a vX.Y.Z -m "Versão X.Y.Z"
+   git push origin vX.Y.Z
    ```
 
-   O ZIP precisa se chamar `fila-chamados.zip` para o link de download do README continuar funcionando.
+6. Pronto: o workflow **Release** confere se `$Versao` e o `CHANGELOG.md` batem com a tag, gera o `fila-chamados.zip` a partir do código da tag, assina com Sigstore e publica a release com as notas do CHANGELOG, o SHA-256 e a assinatura (`fila-chamados.zip.sigstore.json`). Acompanhe em [Actions](https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/release.yml).
 
-7. Ao publicar a release, o workflow **Assinar release** refaz o ZIP a partir da tag, confere que é idêntico ao publicado e anexa a assinatura `fila-chamados.zip.sigstore.json`. Confira na release se ela apareceu. Se o workflow falhar dizendo que o ZIP não é idêntico, gere o ZIP de novo a partir da tag e substitua o da release com `gh release upload vX.Y.Z fila-chamados.zip --clobber`.
+Para publicar de novo uma versão já lançada (por exemplo, se o workflow falhou), rode o **Release** manualmente em Actions, informando a tag.
 
 ## Licença
 
