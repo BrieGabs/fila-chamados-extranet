@@ -1,0 +1,4 @@
+# Mantem os arquivos byte a byte (scripts do Windows em CRLF, UTF-8 com BOM)
+* -text
+*.dll binary
+*.ico binary

@@ -1,0 +1,123 @@
+﻿# Autoteste da FilaChamados.ps1 (datas, calendario e leitor da lista da Extranet); nao abre o painel
+# Uso: powershell -NoProfile -ExecutionPolicy Bypass -File Testar.ps1
+$ErrorActionPreference = 'Stop'
+$ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'FilaChamados.ps1'), [ref]$null, [ref]$null)
+foreach ($f in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)) { . ([scriptblock]::Create($f.Extent.Text)) }
+$ChamadoUrl = 'https://x/Chamado.aspx?CODIGO='
+$ExtranetDominio = 'extranet.exemplo.com.br'
+$TextInfo = (Get-Culture).TextInfo
+function Confere($ok, [string]$msg) { if (-not $ok) { throw "FALHOU: $msg" } }
+
+# ---------------------------------------------------------------- datas, tipos e responsavel
+Confere ((Get-TipoCategoria 'APP (PRODUTO - INCIDÊNCIA)') -eq 'Incidência' -and (Get-TipoCategoria 'SISTEMA WEB - Consultoria') -eq 'Consultoria') 'tipo pela categoria'
+Confere ((Get-DataBr '15/09/2026 07:32') -eq [datetime]'2026-09-15 07:32') 'data com hora'
+Confere ($null -eq (Get-DataBr '')) 'data vazia'
+Confere ((Get-ComQuem 'FILA DE ATUALIZAÇÃO') -eq 'na fila de atualização') 'responsavel fila'
+Confere ((Get-ComQuem 'FULANA BELTRANA DE TAL') -eq 'com Fulana Beltrana') 'responsavel pessoa'
+
+# ---------------------------------------------------------------- seguranca
+Confere ((Get-TextoCsv '=HYPERLINK("x")') -eq "'=HYPERLINK(`"x`")" -and (Get-TextoCsv '@SUM(1)') -eq "'@SUM(1)" -and (Get-TextoCsv 'Erro ao salvar') -eq 'Erro ao salvar') 'csv: texto com cara de formula vira texto'
+Confere ((Test-UrlExtranet 'https://www.extranet.exemplo.com.br/Chamado.aspx?CODIGO=1') -and (Test-UrlExtranet 'https://extranet.exemplo.com.br/')) 'url: Extranet aceita'
+Confere (-not (Test-UrlExtranet 'http://www.extranet.exemplo.com.br/') -and -not (Test-UrlExtranet 'https://extranet.exemplo.com.br.outro.com/') -and -not (Test-UrlExtranet 'https://xextranet.exemplo.com.br/') -and -not (Test-UrlExtranet 'about:blank') -and -not (Test-UrlExtranet '')) 'url: outro site, http e vazio recusados'
+Confere ((Get-ListaUrl ' https://www.extranet.exemplo.com.br/sistema/Login.aspx?ReturnUrl=%2f ') -eq 'https://www.extranet.exemplo.com.br/sistema/Chamados.aspx?TipoBusca=lnkResponsabilidade' -and (Get-ListaUrl 'https://extranet.exemplo.com.br/sistema') -eq 'https://extranet.exemplo.com.br/sistema/Chamados.aspx?TipoBusca=lnkResponsabilidade') 'endereco: qualquer pagina da Extranet vira a lista'
+Confere ($null -eq (Get-ListaUrl 'http://extranet.exemplo.com.br/') -and $null -eq (Get-ListaUrl 'extranet') -and $null -eq (Get-ListaUrl '')) 'endereco: sem https recusado'
+Set-Extranet 'https://www.extranet.exemplo.com.br/sistema/Chamados.aspx?TipoBusca=lnkResponsabilidade'
+Confere ($ChamadoUrl -eq 'https://www.extranet.exemplo.com.br/sistema/Chamado.aspx?CODIGO=' -and $ExtranetDominio -eq 'extranet.exemplo.com.br') 'endereco: chamado e dominio saem da lista'
+$teste = Join-Path $env:TEMP 'FilaChamadosTeste-dpapi.json'
+Write-Json ([pscustomobject]@{ cliente = 'CLIENTE EXEMPLO A'; dias = @(1, 2) }) 3 $teste
+$lido = Read-Json $teste
+Confere ((Get-Content -LiteralPath $teste -Raw).StartsWith('DPAPI:') -and (Get-Content -LiteralPath $teste -Raw) -notmatch 'CLIENTE' -and $lido.cliente -eq 'CLIENTE EXEMPLO A' -and @($lido.dias).Count -eq 2) 'dpapi: grava cifrado e le de volta'
+Set-Content -LiteralPath $teste -Value '{ "cliente": "aberto" }' -Encoding UTF8
+Confere ((Read-Json $teste).cliente -eq 'aberto') 'dpapi: le .json aberto de versao antiga'
+Remove-Item -LiteralPath $teste
+
+# ---------------------------------------------------------------- calendario
+$fila = @([pscustomobject]@{ codigo = '1'; criacao = '23/06/2026' }, [pscustomobject]@{ codigo = '2'; criacao = '' })
+$hist = @([pscustomobject]@{ codigo = '3'; criacao = '08/09/2026'; saiuEm = '2026-09-24T17:55:00.000Z' })
+$ev = @(Get-EventosCalendario $fila $hist)
+Confere ($ev.Count -eq 3) "calendario: 3 eventos (veio $($ev.Count))"
+Confere (@($ev | Where-Object { $_.evento -eq 'chegou' -and $_.dia -eq [datetime]'2026-06-23' }).Count -eq 1) 'calendario: chegou pela criacao'
+Confere (@($ev | Where-Object { $_.evento -eq 'chegou' -and $_.item.codigo -eq '3' }).Count -eq 1) 'calendario: historico tambem chegou'
+Confere (@($ev | Where-Object { $_.evento -eq 'entregue' -and $_.dia -eq (Get-DataLocal '2026-09-24T17:55:00.000Z').Date }).Count -eq 1) 'calendario: entregue pela saida da fila'
+$ExecFile = Join-Path $env:TEMP 'FilaChamadosTeste-execucao.json'
+Remove-Item -LiteralPath $ExecFile -ErrorAction SilentlyContinue
+$lida = @([pscustomobject]@{ codigo = '1'; emExecucao = $true }, [pscustomobject]@{ codigo = '2'; emExecucao = $false })
+foreach ($d in @('2026-09-08 10:00', '2026-09-09 16:00', '2026-09-09 17:00', '2026-09-11 09:00')) { Update-Execucao $lida ([datetime]$d) }
+Update-Execucao @([pscustomobject]@{ codigo = '3'; emExecucao = $true }) ([datetime]'2026-09-24 11:00')
+$exec = Read-Json $ExecFile
+Confere ((@($exec.'1') -join ',') -eq '08/09/2026,09/09/2026,11/09/2026' -and $null -eq $exec.'2') "execucao: um dia por leitura em execucao, sem repetir (veio $(@($exec.'1') -join ','))"
+Set-Content -LiteralPath $ExecFile -Value '{ quebrado' -Encoding UTF8
+Update-Execucao $lida ([datetime]'2026-09-12 10:00')
+Confere ((Get-Content -LiteralPath $ExecFile -Raw) -match 'quebrado') 'execucao: arquivo ilegivel nao e sobrescrito'
+Remove-Item -LiteralPath $ExecFile
+$per = @(Get-PeriodosGantt $fila $hist $exec)
+Confere ($per.Count -eq 2) "gantt: so chamados com dia em execucao (veio $($per.Count))"
+Confere ($per[0].item.codigo -eq '1' -and $per[0].trechos.Count -eq 2 -and $per[0].trechos[0].ini -eq [datetime]'2026-09-08' -and $per[0].trechos[0].fim -eq [datetime]'2026-09-09' -and $per[0].trechos[1].ini -eq [datetime]'2026-09-11') 'gantt: dias seguidos viram um trecho'
+Confere ($per[1].item.codigo -eq '3' -and $per[1].trechos[0].ini -eq [datetime]'2026-09-24') 'gantt: chamado do historico tambem entra'
+
+# ---------------------------------------------------------------- extranet
+# Copia simplificada da lista "Minha responsabilidade" (mesmos ids da pagina real)
+$pagina = @'
+<html><body><div><b>&nbsp; Lista de Chamados
+  (2)</b></div>
+<table class="table table-bordered datatable"><tbody><tr><td><a>Código</a></td><td><a>Cliente</a></td><td><a>Status</a></td><td><a>Versão</a></td><td><a>Descritivo</a></td></tr></tbody><tbody>
+<tr id="ContentPlaceHolder1_rptChamados_divChamado_0">
+ <td id="ContentPlaceHolder1_rptChamados_tdCodigo_0"><input type="hidden" id="ContentPlaceHolder1_rptChamados_hddCodigo_0" value="100001"><h4>100001</h4></td>
+ <td id="ContentPlaceHolder1_rptChamados_td1_0"><span>CLIENTE EXEMPLO A - UNIDADE 1</span></td>
+ <td id="ContentPlaceHolder1_rptChamados_td2_0"><span>Em Desenvolvimento</span><br> (<a>0</a>) </td>
+ <td id="ContentPlaceHolder1_rptChamados_td3_0"><b>9.9.9</b><br> <a>30/07/2026</a></td>
+ <td><div class="panel-heading"><input type="hidden" id="ContentPlaceHolder1_rptChamados_hddPrioridade_0" value="1">
+  <h5 style="text-transform: uppercase"><div class="tooltip2"><a href="Chamado.aspx?CODIGO=100001"><span>Incidência na abertura</span></a></div></h5>
+  <p class="Desktop">Em Desenvolvimento</p> <p class="Desktop">CLIENTE EXEMPLO A</p> APP (PRODUTO - INCIDÊNCIA)<br> Responsável: <b>X</b> - Criação: <b>23/06/2026 13:28:41</b> (<a>94</a>) Tipo Cliente: <b></b>
+  <div><input type="hidden" id="ContentPlaceHolder1_rptChamados_HddEmExecucao_0" value="S"></div></div></td>
+</tr>
+<tr id="ContentPlaceHolder1_rptChamados_divChamado_1">
+ <td id="ContentPlaceHolder1_rptChamados_tdCodigo_1"><input type="hidden" id="ContentPlaceHolder1_rptChamados_hddCodigo_1" value="100002"><h4>100002</h4></td>
+ <td id="ContentPlaceHolder1_rptChamados_td1_1"><span>MUNICÍPIO EXEMPLO - CLIENTE EXEMPLO B</span></td>
+ <td id="ContentPlaceHolder1_rptChamados_td2_1"><span>Novo</span><br> (<a>24</a>) </td>
+ <td id="ContentPlaceHolder1_rptChamados_td3_1"><b></b><br> <a></a></td>
+ <td><div class="panel-heading"><input type="hidden" id="ContentPlaceHolder1_rptChamados_hddPrioridade_1" value="1">
+  <h5><div class="tooltip2"><a href="Chamado.aspx?CODIGO=100002"><span>desenvolvimento front-end</span></a></div></h5>
+  <p class="Desktop">Novo</p> <p class="Desktop">CLIENTE EXEMPLO B</p> SISTEMA WEB - Consultoria<br> Responsável: <b>X</b> - Criação: <b>24/08/2026 16:30:07</b> (<a>32</a>)
+  <div><input type="hidden" id="ContentPlaceHolder1_rptChamados_HddEmExecucao_1" value="N"></div></div></td>
+</tr></tbody></table></body></html>
+'@
+Add-Type -AssemblyName PresentationFramework
+$wv2 = Join-Path $PSScriptRoot 'webview2'
+Add-Type -Path (Join-Path $wv2 'Microsoft.Web.WebView2.Core.dll')
+Add-Type -Path (Join-Path $wv2 'Microsoft.Web.WebView2.Wpf.dll')
+[Microsoft.Web.WebView2.Core.CoreWebView2Environment]::SetLoaderDllFolderPath($wv2)
+$script:js = $ast.Find({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] -and $args[0].Left.Extent.Text -eq '$ScriptFila' }, $true).Right.Expression.Value
+
+# roda $ScriptFila na pagina dentro de um WebView2 fora da tela e devolve o JSON que ele mandar
+function Ler-Pagina([string]$h) {
+    $script:html = $h; $script:resp = $null
+    $script:jan = New-Object System.Windows.Window
+    $script:jan.Width = 300; $script:jan.Height = 200; $script:jan.Left = -5000; $script:jan.ShowInTaskbar = $false; $script:jan.ShowActivated = $false
+    $script:wv = New-Object Microsoft.Web.WebView2.Wpf.WebView2
+    $cp = New-Object Microsoft.Web.WebView2.Wpf.CoreWebView2CreationProperties
+    $cp.UserDataFolder = Join-Path $env:TEMP 'FilaChamadosTeste'
+    $script:wv.CreationProperties = $cp
+    $script:wv.Add_CoreWebView2InitializationCompleted({ $script:wv.CoreWebView2.NavigateToString($script:html) })
+    $script:wv.Add_NavigationCompleted({ [void]$script:wv.ExecuteScriptAsync($script:js) })
+    $script:wv.Add_WebMessageReceived({ param($s, $e) $script:resp = $e.TryGetWebMessageAsString() | ConvertFrom-Json; $script:jan.Close() })
+    $script:jan.Content = $script:wv
+    $script:jan.Add_ContentRendered({ [void]$script:wv.EnsureCoreWebView2Async($null) })
+    $t = New-Object System.Windows.Threading.DispatcherTimer
+    $t.Interval = [timespan]::FromSeconds(30); $t.Add_Tick({ $script:jan.Close() }); $t.Start()
+    [void]$script:jan.ShowDialog()
+    $t.Stop()
+    Confere $script:resp 'o leitor respondeu (WebView2)'
+    return $script:resp
+}
+
+$r = Ler-Pagina $pagina
+Confere ($r.ok -and @($r.chamados).Count -eq 2) "leitor: 2 chamados (erro: $($r.erro))"
+$a = $r.chamados[0]; $b = $r.chamados[1]
+Confere ($a.codigo -eq '100001' -and $a.status -eq 'Em Desenvolvimento' -and $a.diasStatus -eq 0 -and $a.cliente -eq 'CLIENTE EXEMPLO A - UNIDADE 1') 'leitor: codigo, status, cliente'
+Confere ($a.versao -eq '9.9.9' -and $a.dataPrevista -eq '30/07/2026' -and $a.criacao -eq '23/06/2026' -and $a.prioridade -eq '1') 'leitor: versao, prevista, criacao, prioridade'
+Confere ($a.titulo -eq 'Incidência na abertura' -and $a.categoria -eq 'APP (PRODUTO - INCIDÊNCIA)' -and $a.emExecucao) "leitor: titulo sem maiusculas do CSS, categoria, em execucao (veio '$($a.titulo)' / '$($a.categoria)')"
+Confere ($b.codigo -eq '100002' -and $b.diasStatus -eq 24 -and $b.versao -eq '' -and $b.dataPrevista -eq '' -and -not $b.emExecucao -and $b.categoria -eq 'SISTEMA WEB - Consultoria') 'leitor: chamado sem versao/prevista'
+$r = Ler-Pagina ($pagina.Replace('(2)', '(3)'))
+Confere (-not $r.ok -and $r.erro -match '2 de 3' -and $r.html) 'leitor: lista incompleta (paginada) e recusada e manda a pagina'
+'OK'
