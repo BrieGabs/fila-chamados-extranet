@@ -50,7 +50,7 @@ A versão instalada aparece no menu do botão direito do painel ("mininet vX.Y.Z
 
 ### Releases e código
 
-- **O ZIP de cada release é assinado** com Sigstore pelo workflow **Assinar release**, que refaz o ZIP a partir da tag e só assina se ele for idêntico ao publicado. A assinatura (`fila-chamados.zip.sigstore.json`) fica anexada na release e pode ser conferida com `gh attestation verify fila-chamados.zip -R BrieGabs/fila-chamados-extranet`.
+- **O ZIP de cada release é gerado e assinado pelo GitHub** com Sigstore, no workflow **Release**, a partir do código da tag: ninguém monta o ZIP à mão. A assinatura (`fila-chamados.zip.sigstore.json`) fica anexada na release e pode ser conferida com `gh attestation verify fila-chamados.zip -R BrieGabs/fila-chamados-extranet`.
 - **O branch `main` é protegido:** mudanças só entram por pull request, com o autoteste e a análise de segurança aprovados, e o histórico não pode ser reescrito nem apagado.
 - **A análise de segurança do código** (PSScriptAnalyzer) roda a cada mudança, e o resultado fica na aba Security do repositório.
 

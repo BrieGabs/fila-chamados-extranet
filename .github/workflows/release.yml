@@ -1,0 +1,92 @@
+# Gera, publica e assina o ZIP de cada versão: basta enviar a tag vX.Y.Z
+# O ZIP sai do código da tag, aqui no GitHub, e recebe a assinatura Sigstore com a procedência
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag a publicar de novo (ex.: v1.1.0)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publicar:
+    name: Gerar, publicar e assinar o ZIP
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write       # cria a release e anexa os arquivos
+      id-token: write       # identidade do workflow para o Sigstore
+      attestations: write   # registra a procedência no GitHub
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Baixar o código da tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          persist-credentials: false
+
+      - name: Conferir a versão
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Tag fora do formato vX.Y.Z: $TAG"; exit 1; }
+          grep -q "^[$]Versao = '${TAG#v}'" FilaChamados.ps1 || { echo "::error::\$Versao no FilaChamados.ps1 não é ${TAG#v}"; exit 1; }
+          grep -q "^## \[${TAG#v}\]" CHANGELOG.md || { echo "::error::O CHANGELOG.md não tem a seção ${TAG#v}"; exit 1; }
+
+      - name: Gerar o ZIP
+        run: git archive --prefix=fila-chamados/ -o fila-chamados.zip HEAD
+
+      - name: Assinar e registrar a procedência
+        id: procedencia
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: fila-chamados.zip
+
+      - name: Montar as notas
+        env:
+          BUNDLE: ${{ steps.procedencia.outputs.bundle-path }}
+        run: |
+          cp "$BUNDLE" fila-chamados.zip.sigstore.json
+          base="https://github.com/$GH_REPO/blob/$TAG"
+          {
+            # Seção da versão no CHANGELOG, com os links relativos apontando para a tag
+            awk -v v="${TAG#v}" '/^## \[/{f = index($0, "## [" v "]") == 1; next} f' CHANGELOG.md \
+              | sed -E "s#\]\(([^):#/][^):]*)\)#]($base/\1)#g" | sed -e '/./,$!d'
+            echo
+            echo '## Download'
+            echo
+            echo "Baixe o **fila-chamados.zip** abaixo e siga o [guia de instalação](https://github.com/$GH_REPO#como-instalar)."
+            echo
+            echo '### Conferir o arquivo (SHA-256)'
+            echo
+            echo '```'
+            sha256sum fila-chamados.zip
+            echo '```'
+            echo
+            echo 'No PowerShell, `Get-FileHash .\fila-chamados.zip` precisa mostrar o mesmo código.'
+            echo
+            echo '### Conferir a assinatura'
+            echo
+            echo 'O ZIP foi gerado e assinado pelo GitHub a partir do código desta tag. Com o [GitHub CLI](https://cli.github.com/):'
+            echo
+            echo '```'
+            echo "gh attestation verify fila-chamados.zip -R $GH_REPO"
+            echo '```'
+          } > notas.md
+          cat notas.md
+
+      - name: Publicar a release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" fila-chamados.zip fila-chamados.zip.sigstore.json --clobber
+            gh release edit "$TAG" --notes-file notas.md
+          else
+            gh release create "$TAG" fila-chamados.zip fila-chamados.zip.sigstore.json --title "$TAG" --notes-file notas.md --verify-tag
+          fi
