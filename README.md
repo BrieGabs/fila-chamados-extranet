@@ -1,4 +1,4 @@
-<h1 align="center">Fila de Chamados (Extranet)</h1>
+<h1 align="center">mininet</h1>
 
 <p align="center">
   <a href="https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/testes.yml"><img src="https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/testes.yml/badge.svg" alt="Testes"></a>
@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/capa.png" width="900" alt="Painel Fila de Chamados flutuando no canto inferior direito da área de trabalho, com cinco chamados listados">
+  <img src="docs/capa.png" width="900" alt="Painel mininet flutuando no canto inferior direito da área de trabalho, com cinco chamados listados">
 </p>
 
 <p align="center">
@@ -178,7 +178,7 @@ Clique com o botão direito em qualquer ponto do painel.
 | **Trocar endereço da Extranet** | Pede o endereço da Extranet de novo |
 | **Voltar para o canto da tela** | Devolve o painel ao canto inferior direito |
 | **Iniciar com o Windows** | Liga ou desliga a abertura automática |
-| **Fila de Chamados vX.Y.Z** | Mostra a versão instalada (não é clicável) |
+| **mininet vX.Y.Z** | Mostra a versão instalada (não é clicável) |
 | **Fechar** | Fecha o painel |
 
 As duas opções de copiar só aparecem quando o clique foi em cima de um chamado.

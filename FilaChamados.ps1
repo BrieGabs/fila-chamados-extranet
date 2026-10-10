@@ -1,4 +1,4 @@
-﻿# Fila de Chamados - janelinha flutuante (Extranet)
+﻿# mininet - janelinha flutuante com a fila de chamados da Extranet
 # Mostra os chamados de chamados.json (mesma pasta). O Recarregar (e a busca
 # automatica a cada 15 min) le a fila na Extranet por um navegador WebView2 do
 # proprio painel: o login e feito pela pessoa na janelinha que abre, sem senha
@@ -146,7 +146,7 @@ function Open-HistoricoExcel {
     $h = Get-Historico
     $hist = @($h | Sort-Object { Get-Stamp $_.saiuEm } -Descending)
     if ($hist.Count -eq 0) {
-        [void][System.Windows.MessageBox]::Show('O histórico ainda está vazio. Ele começa a encher quando um chamado sair da sua fila.', 'Fila de chamados')
+        [void][System.Windows.MessageBox]::Show('O histórico ainda está vazio. Ele começa a encher quando um chamado sair da sua fila.', 'mininet')
         return
     }
     try {
@@ -155,7 +155,7 @@ function Open-HistoricoExcel {
     } catch {
         # hazard: o Excel trava a planilha enquanto ela esta aberta; ai so traz de volta a que ja esta aberta
         if (-not (Test-Path -LiteralPath $HistCsv)) {
-            [void][System.Windows.MessageBox]::Show("Não consegui gerar a planilha do histórico:`n$($_.Exception.Message)", 'Fila de chamados')
+            [void][System.Windows.MessageBox]::Show("Não consegui gerar a planilha do histórico:`n$($_.Exception.Message)", 'mininet')
             return
         }
     }
@@ -332,7 +332,7 @@ function Initialize-Web {
     Add-Type -Path (Join-Path $WebDir 'Microsoft.Web.WebView2.Wpf.dll')
     [Microsoft.Web.WebView2.Core.CoreWebView2Environment]::SetLoaderDllFolderPath($WebDir)
     $w = New-Object System.Windows.Window
-    $w.Title = 'Entrar na Extranet - Fila de chamados'
+    $w.Title = 'Entrar na Extranet - mininet'
     $w.Width = 520; $w.Height = 700
     $w.Left = -20000; $w.Top = -20000   # fora da tela: so aparece quando precisa de login
     $w.ShowInTaskbar = $false; $w.ShowActivated = $false
@@ -390,7 +390,7 @@ function Hide-Login {
 # Janelinha que pede o endereco da Extranet; devolve $true se a pessoa informou um endereco valido
 function Pedir-Extranet {
     $d = New-Object System.Windows.Window
-    $d.Title = 'Endereço da Extranet - Fila de chamados'
+    $d.Title = 'Endereço da Extranet - mininet'
     $d.SizeToContent = 'WidthAndHeight'; $d.ResizeMode = 'NoResize'
     $d.WindowStartupLocation = 'CenterScreen'; $d.Topmost = $true
     $sp = New-Object System.Windows.Controls.StackPanel
@@ -551,7 +551,7 @@ $TextInfo     = (Get-Culture).TextInfo
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Fila de chamados" Width="370" SizeToContent="Height"
+        Title="mininet" Width="370" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
         WindowStartupLocation="Manual" FontFamily="Segoe UI" FontSize="12">
@@ -1242,7 +1242,7 @@ try {
     $miStartup.IsChecked = (Test-Path -LiteralPath $StartupLnk)
     $miStartup.Add_Click({ Toggle-Startup }); [void]$menu.Items.Add($miStartup)
     [void]$menu.Items.Add((New-Object System.Windows.Controls.Separator))
-    $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = "Fila de Chamados v$Versao"; $mi.IsEnabled = $false
+    $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = "mininet v$Versao"; $mi.IsEnabled = $false
     [void]$menu.Items.Add($mi)
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Fechar'
     $mi.Add_Click({ $win.Close() }); [void]$menu.Items.Add($mi)
@@ -1272,7 +1272,7 @@ try {
     [void]$win.ShowDialog()
     Save-State
 } catch {
-    [void][System.Windows.MessageBox]::Show("A janelinha da fila de chamados encontrou um erro:`n`n$($_.Exception.Message)`n`nLinha: $($_.InvocationInfo.ScriptLineNumber)", 'Fila de chamados')
+    [void][System.Windows.MessageBox]::Show("O mininet encontrou um erro:`n`n$($_.Exception.Message)`n`nLinha: $($_.InvocationInfo.ScriptLineNumber)", 'mininet')
 } finally {
     Remove-PlanilhaHistorico
     $mutex.ReleaseMutex()

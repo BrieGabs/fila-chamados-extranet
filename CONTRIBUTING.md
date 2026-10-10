@@ -1,13 +1,13 @@
 # Como contribuir
 
-Obrigado por querer melhorar o painel Fila de Chamados.
+Obrigado por querer melhorar o mininet.
 
 ## Relatar um erro ou sugerir melhoria
 
 - Abra uma [issue](https://github.com/BrieGabs/fila-chamados-extranet/issues) e conte:
   - o que aconteceu;
   - o que você esperava que acontecesse;
-  - a versão do painel, que aparece no menu do botão direito ("Fila de Chamados vX.Y.Z").
+  - a versão do painel, que aparece no menu do botão direito ("mininet vX.Y.Z").
 - **Nunca anexe dados reais:** nada de `historico.csv`, `diagnostico-extranet.html`, prints com clientes ou o endereço da Extranet. Use dados fictícios.
 - **Problemas de segurança não vão em issue.** Siga o [SECURITY.md](SECURITY.md).
 

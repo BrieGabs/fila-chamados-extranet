@@ -1,6 +1,6 @@
 # Segurança
 
-O painel Fila de Chamados foi feito e revisado com a segurança como prioridade, para que colaboradores e empresa possam usá-lo com tranquilidade:
+O mininet foi feito e revisado com a segurança como prioridade, para que colaboradores e empresa possam usá-lo com tranquilidade:
 
 - **Colaboradores:** a senha nunca passa pelo painel, e os arquivos de dados guardados no computador ficam cifrados com a conta do Windows de cada pessoa. A planilha do histórico só existe enquanto está aberta no Excel.
 - **Empresa:** o repositório não contém o endereço da Extranet, dados de clientes nem chamados reais. O painel só conversa com a Extranet e não dá a ninguém acesso além do que o próprio login já permite.
@@ -13,7 +13,7 @@ Este documento detalha o que o painel protege, os cuidados que dependem de quem 
 |---|---|
 | 1.0.x | ✅ Recebe correções de segurança |
 
-A versão instalada aparece no menu do botão direito do painel ("Fila de Chamados vX.Y.Z").
+A versão instalada aparece no menu do botão direito do painel ("mininet vX.Y.Z").
 
 ## O que o painel protege
 

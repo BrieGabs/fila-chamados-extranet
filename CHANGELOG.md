@@ -10,6 +10,10 @@ O projeto segue o [versionamento semântico](https://semver.org/lang/pt-BR/) (`M
 
 ## [Não lançado]
 
+### Alterado
+
+- O projeto passou a se chamar **mininet**: título, janelas, menu e documentação. O endereço do repositório, a pasta de dados e o atalho de inicialização continuam os mesmos.
+
 ### Adicionado
 
 - Testes e análise de segurança (PSScriptAnalyzer) automáticos num Windows do GitHub, a cada envio.
