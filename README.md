@@ -4,6 +4,7 @@
   <a href="https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/testes.yml"><img src="https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/testes.yml/badge.svg" alt="Testes"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/BrieGabs/fila-chamados-extranet"><img src="https://api.scorecard.dev/projects/github.com/BrieGabs/fila-chamados-extranet/badge" alt="OpenSSF Scorecard"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-blue" alt="Licença MIT"></a>
+  <img src="https://komarev.com/ghpvc/?username=BrieGabs-fila-chamados-extranet&label=visualiza%C3%A7%C3%B5es&color=blue" alt="Visualizações desta página">
 </p>
 
 <p align="center">
@@ -330,7 +331,7 @@ O painel foi feito e revisado com a segurança como prioridade, para ser usado c
 
 ### Verificado automaticamente
 
-Os selos no topo desta página não são enfeite: cada um aponta para uma verificação que qualquer pessoa pode abrir.
+Os selos de testes e do Scorecard, no topo desta página, não são enfeite: cada um aponta para uma verificação que qualquer pessoa pode abrir.
 
 - **Testes:** a cada mudança, um Windows do GitHub roda o autoteste (incluindo os testes de segurança) e o PSScriptAnalyzer, o analisador de código da Microsoft, com as regras de segurança. O resultado da análise vai para a aba Security do repositório.
 - **`main` protegido:** nenhuma mudança entra direto. Tudo passa por pull request, e só é aceito com os testes e a análise de segurança aprovados. O histórico não pode ser reescrito nem apagado.
