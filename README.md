@@ -1,4 +1,4 @@
-<h1 align="center">mininet</h1>
+<h1 align="center">Mininet</h1>
 
 <p align="center">
   <a href="https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/testes.yml"><img src="https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/testes.yml/badge.svg" alt="Testes"></a>
