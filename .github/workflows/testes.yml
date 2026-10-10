@@ -42,7 +42,7 @@ jobs:
         shell: powershell
         run: |
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
-          # Regras de segurança da Microsoft: qualquer ocorrência reprova
+          # Regras de seguranca da Microsoft: qualquer ocorrencia reprova (texto sem acento: o PowerShell 5.1 le o script do workflow como ANSI)
           $seguranca = @(
             'PSAvoidUsingInvokeExpression',
             'PSAvoidUsingPlainTextForPassword',
@@ -55,8 +55,8 @@ jobs:
           )
           $problemas = @(Get-ChildItem -Filter *.ps1 | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -IncludeRule $seguranca })
           $problemas | Format-Table -AutoSize | Out-String -Width 200
-          # Demais regras: só informativo (estilo, nomes de funções etc.)
+          # Demais regras: so informativo (estilo, nomes de funcoes etc.)
           $outros = @(Get-ChildItem -Filter *.ps1 | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Severity Warning, Error -ExcludeRule $seguranca })
-          "Avisos de estilo (não reprovam): $($outros.Count)"
-          if ($problemas.Count) { throw "PSScriptAnalyzer encontrou $($problemas.Count) problema(s) de segurança" }
-          'Nenhum problema de segurança encontrado'
+          "Avisos de estilo (nao reprovam): $($outros.Count)"
+          if ($problemas.Count) { throw "PSScriptAnalyzer encontrou $($problemas.Count) problema(s) de seguranca" }
+          'Nenhum problema de seguranca encontrado'

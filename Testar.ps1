@@ -96,7 +96,7 @@ $script:js = $ast.Find({ $args[0] -is [System.Management.Automation.Language.Ass
 
 # roda $ScriptFila na pagina dentro de um WebView2 fora da tela e devolve o JSON que ele mandar
 function Ler-Pagina([string]$h) {
-    $script:html = $h; $script:resp = $null
+    $script:html = $h; $script:resp = $null; $script:progressos = 0
     $script:jan = New-Object System.Windows.Window
     $script:jan.Width = 300; $script:jan.Height = 200; $script:jan.Left = -5000; $script:jan.ShowInTaskbar = $false; $script:jan.ShowActivated = $false
     $script:wv = New-Object Microsoft.Web.WebView2.Wpf.WebView2
@@ -105,7 +105,12 @@ function Ler-Pagina([string]$h) {
     $script:wv.CreationProperties = $cp
     $script:wv.Add_CoreWebView2InitializationCompleted({ $script:wv.CoreWebView2.NavigateToString($script:html) })
     $script:wv.Add_NavigationCompleted({ [void]$script:wv.ExecuteScriptAsync($script:js) })
-    $script:wv.Add_WebMessageReceived({ param($s, $e) $script:resp = $e.TryGetWebMessageAsString() | ConvertFrom-Json; $script:jan.Close() })
+    $script:wv.Add_WebMessageReceived({
+            param($s, $e)
+            $m = $e.TryGetWebMessageAsString() | ConvertFrom-Json
+            if ($m.progresso) { $script:progressos++; return }   # andamento da leitura em varias paginas: espera a resposta final
+            $script:resp = $m; $script:jan.Close()
+        })
     $script:jan.Content = $script:wv
     $script:jan.Add_ContentRendered({ [void]$script:wv.EnsureCoreWebView2Async($null) })
     $t = New-Object System.Windows.Threading.DispatcherTimer
@@ -125,4 +130,51 @@ Confere ($a.titulo -eq 'Incidência na abertura' -and $a.categoria -eq 'APP (PRO
 Confere ($b.codigo -eq '100002' -and $b.diasStatus -eq 24 -and $b.versao -eq '' -and $b.dataPrevista -eq '' -and -not $b.emExecucao -and $b.categoria -eq 'SISTEMA WEB - Consultoria') 'leitor: chamado sem versao/prevista'
 $r = Ler-Pagina ($pagina.Replace('(2)', '(3)'))
 Confere (-not $r.ok -and $r.erro -match '2 de 3' -and $r.html) 'leitor: lista incompleta (paginada) e recusada e manda a pagina'
+
+# ---------------------------------------------------------------- lista em varias paginas
+# A Extranet pagina de 20 em 20 e troca de pagina por AJAX (UpdatePanel). O stub imita o PageRequestManager do ASP.NET:
+# o __doPostBack do "proxima" troca as linhas pela pagina 2 (chamado 100003), desabilita o "proxima" e dispara o endRequest.
+# $modo: 'ok' troca de pagina; 'repete' devolve as mesmas linhas; 'erro' devolve erro no AJAX
+function Pagina-Paginada([string]$modo) {
+    $ajax = @'
+<a id="ContentPlaceHolder1_lnkNext" href="javascript:__doPostBack('ctl00$ContentPlaceHolder1$lnkNext','')">»</a>
+<script>
+  let hs = [];
+  const prm = { add_endRequest: h => hs.push(h), remove_endRequest: h => { hs = hs.filter(x => x !== h); } };
+  window.Sys = { WebForms: { PageRequestManager: { getInstance: () => prm } } };
+  window.__doPostBack = (alvo) => setTimeout(() => {
+    if (alvo !== 'ctl00$ContentPlaceHolder1$lnkNext') return;
+    let erro = null;
+    if ('MODO' === 'erro') erro = { message: 'timeout do servidor' };
+    else if ('MODO' === 'ok') {
+      const linhas = [...document.querySelectorAll('tr[id^="ContentPlaceHolder1_rptChamados_divChamado_"]')];
+      const n = linhas[1].cloneNode(true);
+      n.querySelector('input[id^="ContentPlaceHolder1_rptChamados_hddCodigo_"]').value = '100003';
+      const corpo = linhas[0].parentNode;
+      linhas.forEach(x => x.remove());
+      corpo.appendChild(n);
+      const prox = document.getElementById('ContentPlaceHolder1_lnkNext');
+      prox.removeAttribute('href'); prox.classList.add('aspNetDisabled');
+    }
+    hs.slice().forEach(h => h(prm, { get_error: () => erro, set_errorHandled: () => {} }));
+  }, 20);
+</script></body>
+'@
+    return $pagina.Replace('(2)', '(3)').Replace('</body>', $ajax.Replace('MODO', $modo))
+}
+$r = Ler-Pagina (Pagina-Paginada 'ok')
+Confere ($r.ok -and $r.paginas -eq 2 -and (@($r.chamados | ForEach-Object { $_.codigo }) -join ',') -eq '100001,100002,100003') "paginas: junta as 2 paginas via AJAX (erro: $($r.erro))"
+Confere ($script:progressos -eq 1) "paginas: avisa o andamento entre as paginas (veio $($script:progressos))"
+$r = Ler-Pagina (Pagina-Paginada 'repete')
+Confere (-not $r.ok -and $r.erro -match 'repetiu' -and $r.html) "paginas: pagina repetida e recusada, sem ficar girando (erro: $($r.erro))"
+$r = Ler-Pagina (Pagina-Paginada 'erro')
+Confere (-not $r.ok -and $r.erro -match 'timeout do servidor') "paginas: erro no AJAX e recusado (erro: $($r.erro))"
+$r = Ler-Pagina ($pagina.Replace('(2)', '(3)').Replace('</body>', '<a id="ContentPlaceHolder1_lnkNext" href="javascript:__doPostBack(''ctl00$ContentPlaceHolder1$lnkNext'','''')">»</a></body>'))
+Confere (-not $r.ok -and $r.erro -match 'trocar de página' -and $r.html) "paginas: sem AJAX da Extranet e recusado (erro: $($r.erro))"
+$r = Ler-Pagina ($pagina.Replace('(2)', '(0)') -replace '(?s)<tr id="ContentPlaceHolder1_rptChamados_divChamado_.*?</tr>', '')
+Confere ($r.ok -and @($r.chamados).Count -eq 0) "fila vazia: aceita (erro: $($r.erro))"
+
+# ---------------------------------------------------------------- filtro por status
+$fila = @('Em Análise', 'Novo', 'Em Análise', 'Aguardando Cliente', 'Novo', 'Em Análise') | ForEach-Object { [pscustomobject]@{ status = $_ } }
+Confere ((@(Get-GruposStatus $fila | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join ',') -eq 'Em Análise=3,Novo=2,Aguardando Cliente=1') 'filtro: status do mais numeroso para o menos'
 'OK'

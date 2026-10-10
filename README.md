@@ -15,14 +15,25 @@
 </p>
 
 <p align="center">
+  <a href="#segurança"><b>🔒 Segurança</b></a> ·
   <a href="#como-instalar"><b>Instalar</b></a> ·
   <a href="#primeiro-uso"><b>Primeiro uso</b></a> ·
   <a href="#conhecendo-o-painel"><b>Conhecendo o painel</b></a> ·
-  <a href="#problemas-comuns"><b>Problemas comuns</b></a> ·
-  <a href="#segurança"><b>Segurança</b></a>
+  <a href="#problemas-comuns"><b>Problemas comuns</b></a>
 </p>
 
 > **Exclusivo para a Extranet.** O painel só funciona com a Extranet da empresa e exige uma conta com acesso a ela. Não serve para outros sistemas de chamados.
+
+> [!IMPORTANT]
+> **🔒 Segurança em primeiro lugar.** O mininet foi feito e revisado com a segurança como prioridade:
+>
+> - **Sua senha nunca passa pelo painel.** Você entra na própria página da Extranet; o painel não lê, não guarda e não envia a senha.
+> - **Nada sai do seu computador.** O painel só conversa com a Extranet, e o navegador dele não abre nenhum outro site.
+> - **Tudo o que fica no disco é cifrado** com a sua conta do Windows (DPAPI). Uma cópia da pasta em outro computador, outra conta ou no OneDrive fica ilegível.
+> - **O repositório não tem dados da empresa:** nem o endereço da Extranet, nem clientes, nem chamados reais.
+> - **Verificado de forma independente:** testes de segurança a cada mudança, análise da Microsoft (PSScriptAnalyzer) e nota pública do [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/BrieGabs/fila-chamados-extranet).
+>
+> Detalhes, os cuidados que dependem de você e como avisar sobre um problema: [Segurança](#segurança) e [SECURITY.md](SECURITY.md).
 
 <sub>As imagens desta página são ilustrações com dados fictícios.</sub>
 
@@ -32,8 +43,8 @@
 - **Atualização sozinha.** O painel lê a Extranet a cada 15 minutos enquanto a sua sessão estiver aberta.
 - **Um clique para abrir.** Clique em um chamado e ele abre na Extranet.
 - **Histórico e calendário.** Veja o que saiu da sua fila, o que chegou em cada dia e em quais dias cada chamado esteve em execução.
-- **Sem senha guardada.** Você entra na própria página da Extranet. O painel não salva sua senha.
-- **Dados protegidos.** O que o painel guarda no seu computador fica cifrado com a sua conta do Windows. Veja [Segurança](#segurança).
+- **🔒 Sem senha guardada.** Você entra na própria página da Extranet. O painel não salva sua senha.
+- **🔒 Dados cifrados.** O que o painel guarda no seu computador fica cifrado com a sua conta do Windows. Veja [Segurança](#segurança).
 
 ## Antes de começar
 
@@ -55,6 +66,21 @@ Não é preciso instalar nenhum programa. O painel usa o PowerShell e o WebView2
 [**Baixar o ZIP da versão mais recente**](https://github.com/BrieGabs/fila-chamados-extranet/releases/latest/download/fila-chamados.zip)
 
 O link sempre baixa a última versão publicada. As versões anteriores e o que mudou em cada uma estão em [Releases](https://github.com/BrieGabs/fila-chamados-extranet/releases) e no [CHANGELOG](CHANGELOG.md).
+
+> [!WARNING]
+> **Baixe só por aqui.** O script não é assinado digitalmente e roda com `-ExecutionPolicy Bypass`. Não use cópias recebidas por e-mail, chat, pendrive ou pasta compartilhada: elas podem ter sido alteradas.
+
+<details>
+<summary><b>Conferir que o ZIP é o original (recomendado)</b></summary>
+
+Cada release traz a impressão digital SHA-256 do ZIP. No PowerShell, rode:
+
+```
+Get-FileHash "$env:USERPROFILE\Downloads\fila-chamados.zip" -Algorithm SHA256
+```
+
+O valor mostrado precisa ser igual ao publicado na [página da release](https://github.com/BrieGabs/fila-chamados-extranet/releases/latest). Se for diferente, apague o ZIP e não abra o painel.
+</details>
 
 ### 2. Desbloqueie e extraia
 
@@ -131,6 +157,12 @@ Cada chamado mostra o código, as etiquetas, o título, o cliente e o status atu
 
 - O status fica **amarelo** quando mudou hoje ou ontem.
 - A lista traz primeiro o que está **em execução**, depois as **incidências**, depois o que mudou de status há menos tempo.
+
+### Fila grande
+
+- **Todas as páginas são lidas.** A Extranet mostra a fila de 20 em 20; o painel percorre as páginas sozinho. Enquanto lê, o topo mostra o andamento, por exemplo "atualizando… 40 de 85".
+- **Filtro por status.** Quando a fila tem mais de um status, aparecem botões acima da lista, um por status, com a quantidade, por exemplo "Aguardando Análise (12)". Clique para ver só aquele status; clique em **Todos** para voltar. O contador do topo mostra "12 de 85" e o painel lembra o filtro escolhido.
+- **A lista não volta para o topo** quando o painel se atualiza sozinho: você continua de onde estava.
 
 ### Histórico
 
@@ -230,6 +262,8 @@ A pasta `webview2` não veio junto. Extraia o ZIP inteiro de novo, sem tirar arq
 <details>
 <summary><b>"Não consegui ler a fila na Extranet"</b></summary>
 
+Se a mensagem fala em **páginas** (por exemplo "as páginas trouxeram 38 de 40 chamados" ou "a página 3 da lista não carregou"), a fila provavelmente mudou enquanto o painel lia, ou a Extranet demorou. Clique em **Recarregar** de novo.
+
 A página da Extranet veio diferente do que o painel espera. Tente **Recarregar** mais uma vez. Se continuar, abra uma [issue](https://github.com/BrieGabs/fila-chamados-extranet/issues) com a mensagem que apareceu.
 
 O painel salva uma cópia da página em `diagnostico-extranet.html` e a apaga sozinho na próxima leitura que der certo. **Não anexe esse arquivo em lugares públicos:** ele contém os seus chamados.
@@ -254,33 +288,52 @@ O atalho de inicialização aponta para a pasta antiga. Abra o painel pela pasta
 
 O painel foi feito e revisado com a segurança como prioridade, para ser usado com tranquilidade pelos colaboradores e pela empresa. A versão 1.0.0 é a primeira com todas as proteções abaixo.
 
-**Para os colaboradores**
+### Para os colaboradores
 
 - **Sua senha fica só com você.** O painel não lê, não guarda e não envia a senha.
 - **Seus dados ficam no seu computador.** Nada é enviado para outro lugar, e os arquivos de dados do painel ficam cifrados com a sua conta do Windows.
 
-**Para a empresa**
+### Para a empresa
 
 - **O repositório não tem dados da empresa nem de clientes:** nem o endereço da Extranet, nem nomes de clientes, nem chamados reais. Exemplos e imagens usam dados fictícios.
 - **O painel só conversa com a Extranet,** e o navegador dele não abre outros sites.
-- **O acesso continua sendo o da Extranet:** o painel só mostra o que a pessoa já vê com o próprio login.
+- **O acesso continua sendo o da Extranet:** o painel só mostra o que a pessoa já vê com o próprio login. Ele não amplia permissões nem contorna nenhum controle da Extranet.
 
-Como em qualquer sistema, parte da segurança depende de quem usa, por exemplo não enviar a planilha do histórico, ou uma cópia salva dela, para fora da empresa. Esses cuidados, os detalhes técnicos e como avisar sobre um problema estão em [SECURITY.md](SECURITY.md).
+### O que está protegido
 
-**Verificado automaticamente**
+| | Proteção |
+|---|---|
+| 🔑 **Senha** | Nunca passa pelo painel. Você entra na própria página da Extranet. |
+| 🍪 **Sessão** | Fica no navegador embutido (WebView2), em `%LOCALAPPDATA%\FilaChamados`, com os cookies protegidos pela criptografia do Windows. |
+| 🔐 **Arquivos de dados** | `chamados.json`, `estado.json`, `execucao.json` e `historico.json` ficam cifrados com a sua conta do Windows (DPAPI). |
+| 🌐 **Endereço da Extranet** | Não está no código nem no GitHub. É pedido no primeiro uso e fica só no seu computador, cifrado. |
+| 🧭 **Navegador do painel** | Só abre a Extranet. Links, popups e redirecionamentos para outros sites são bloqueados ou vão para o seu navegador padrão, sem a sua sessão. |
+| ✅ **Leitura da fila** | Só é aceita se vier de uma página da Extranet, e o código de cada chamado é conferido antes de virar link. |
+| 📊 **Planilha do histórico** | Só existe enquanto você usa: é gerada numa pasta só sua e apagada quando o painel fecha. Sai sem fórmulas, então o Excel não executa nada que venha de um chamado. |
+| 🧩 **Componentes** | As DLLs do WebView2 são as originais da Microsoft, com assinatura digital. |
+
+### Seus cuidados
+
+> [!CAUTION]
+> Parte da segurança depende de quem usa. Fique atento a estes pontos:
+>
+> - **Baixe só pelas [releases](https://github.com/BrieGabs/fila-chamados-extranet/releases) deste repositório** e, de preferência, confira o SHA-256. O script não é assinado digitalmente.
+> - **Não envie a planilha do histórico para fora da empresa,** nem uma cópia salva pelo **Salvar como**: ela tem nomes de clientes e títulos de chamados, e o painel não apaga cópias salvas.
+> - **Não publique nem anexe** `diagnostico-extranet.html`, os `.json` da pasta ou prints com dados reais, nem em issues.
+> - **Bloqueie o computador ao sair** (<kbd>Win</kbd> + <kbd>L</kbd>). A cifragem protege contra cópias da pasta, não contra quem usa a sua própria conta do Windows.
+
+### Verificado automaticamente
 
 Os selos no topo desta página não são enfeite: cada um aponta para uma verificação que qualquer pessoa pode abrir.
 
 - **Testes:** a cada mudança, um Windows do GitHub roda o autoteste (incluindo os testes de segurança) e o PSScriptAnalyzer, o analisador de código da Microsoft, com as regras de segurança.
 - **OpenSSF Scorecard:** a Open Source Security Foundation avalia o repositório toda semana e publica uma nota de 0 a 10. Clique no selo para ver cada item avaliado.
-- **Releases conferíveis:** cada release traz a impressão digital SHA-256 do ZIP, para você conferir que o arquivo baixado é o publicado.
+- **Releases conferíveis:** cada release traz a impressão digital SHA-256 do ZIP, para você conferir que o arquivo baixado é o publicado (veja [como conferir](#1-baixe-o-zip)).
 
-**Resumo das proteções**
+### Encontrou um problema de segurança?
 
-- **Senha:** nunca passa pelo painel. Você entra na própria página da Extranet.
-- **Endereço da Extranet:** não está no código. Ele é pedido no primeiro uso e fica só no seu computador, cifrado.
-- **Navegador do painel:** só abre a Extranet. Links para outros sites vão para o seu navegador padrão.
-- **Planilha do histórico:** só existe enquanto você usa. Ela é gerada na hora em que você abre, numa pasta só sua, e apagada quando você fecha o painel. Também sai sem fórmulas: o Excel não executa nada que venha de um chamado.
+> [!IMPORTANT]
+> **Não abra uma issue pública.** Use o aviso privado do GitHub: [Security → Report a vulnerability](https://github.com/BrieGabs/fila-chamados-extranet/security/advisories/new). Só quem mantém o repositório vê o aviso, e a primeira resposta sai em até 14 dias. Detalhes em [SECURITY.md](SECURITY.md).
 
 ### Seus dados
 
