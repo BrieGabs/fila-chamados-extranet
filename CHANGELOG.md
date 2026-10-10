@@ -10,6 +10,12 @@ O projeto segue o [versionamento semântico](https://semver.org/lang/pt-BR/) (`M
 
 ## [Não lançado]
 
+### Segurança
+
+- O ZIP de cada release passa a ser assinado com Sigstore, com o registro de que foi gerado a partir do código deste repositório (`fila-chamados.zip.sigstore.json`).
+- O resultado da análise de segurança (PSScriptAnalyzer) vai para a aba Security do repositório (Code Scanning).
+- O branch `main` passou a ser protegido: mudanças só entram por pull request, com os testes e a análise de segurança aprovados.
+
 ## [1.1.0] - 2026-10-10
 
 ### Corrigido
