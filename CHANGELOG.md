@@ -10,12 +10,21 @@ O projeto segue o [versionamento semântico](https://semver.org/lang/pt-BR/) (`M
 
 ## [Não lançado]
 
+### Corrigido
+
+- Fila com mais de 20 chamados: o painel lia só a primeira página da Extranet e recusava a leitura ("a página trouxe 20 de 26 chamados"). Agora percorre todas as páginas. O mecanismo de paginação da Extranet (AJAX) foi identificado por José Ramos.
+
 ### Alterado
 
+- Barra de rolagem no tema escuro do painel.
+- A lista mantém a posição da rolagem quando o painel se atualiza sozinho.
 - O projeto passou a se chamar **mininet**: título, janelas, menu e documentação. O endereço do repositório, a pasta de dados e o atalho de inicialização continuam os mesmos.
 
 ### Adicionado
 
+- Filtro por status na fila, com a quantidade de chamados de cada status.
+- Andamento da leitura no topo do painel quando a fila tem várias páginas.
+- Aviso no histórico quando ele tem mais de 60 chamados, indicando o Excel para ver todos.
 - Testes e análise de segurança (PSScriptAnalyzer) automáticos num Windows do GitHub, a cada envio.
 - OpenSSF Scorecard: nota de segurança do repositório, atualizada toda semana.
 - Dependabot para manter as ações dos workflows atualizadas.

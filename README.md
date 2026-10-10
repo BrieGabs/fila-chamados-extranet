@@ -132,6 +132,12 @@ Cada chamado mostra o código, as etiquetas, o título, o cliente e o status atu
 - O status fica **amarelo** quando mudou hoje ou ontem.
 - A lista traz primeiro o que está **em execução**, depois as **incidências**, depois o que mudou de status há menos tempo.
 
+### Fila grande
+
+- **Todas as páginas são lidas.** A Extranet mostra a fila de 20 em 20; o painel percorre as páginas sozinho. Enquanto lê, o topo mostra o andamento, por exemplo "atualizando… 40 de 85".
+- **Filtro por status.** Quando a fila tem mais de um status, aparecem botões acima da lista, um por status, com a quantidade, por exemplo "Aguardando Análise (12)". Clique para ver só aquele status; clique em **Todos** para voltar. O contador do topo mostra "12 de 85" e o painel lembra o filtro escolhido.
+- **A lista não volta para o topo** quando o painel se atualiza sozinho: você continua de onde estava.
+
 ### Histórico
 
 Quando um chamado sai da sua fila, ele passa para o histórico, com o dia em que saiu e o último status que tinha com você.
@@ -229,6 +235,8 @@ A pasta `webview2` não veio junto. Extraia o ZIP inteiro de novo, sem tirar arq
 
 <details>
 <summary><b>"Não consegui ler a fila na Extranet"</b></summary>
+
+Se a mensagem fala em **páginas** (por exemplo "as páginas trouxeram 38 de 40 chamados" ou "a página 3 da lista não carregou"), a fila provavelmente mudou enquanto o painel lia, ou a Extranet demorou. Clique em **Recarregar** de novo.
 
 A página da Extranet veio diferente do que o painel espera. Tente **Recarregar** mais uma vez. Se continuar, abra uma [issue](https://github.com/BrieGabs/fila-chamados-extranet/issues) com a mensagem que apareceu.
 

@@ -86,7 +86,7 @@ function Set-Extranet([string]$lista) {
 
 $state = Read-Json $StateFile
 if (-not $state) { $state = New-Object psobject }
-foreach ($p in @('left', 'top', 'recolhido', 'modo', 'ultimoAtualizadoEm', 'ultimos', 'ultimosCodigos', 'codigosBase', 'extranet')) {
+foreach ($p in @('left', 'top', 'recolhido', 'modo', 'ultimoAtualizadoEm', 'ultimos', 'ultimosCodigos', 'codigosBase', 'extranet', 'filtroStatus')) {
     if ($state.PSObject.Properties.Name -notcontains $p) { $state | Add-Member -NotePropertyName $p -NotePropertyValue $null }
 }
 Set-Extranet ([string]$state.extranet)
@@ -269,17 +269,22 @@ function Get-TipoCategoria([string]$cat) {
 
 # ---------------------------------------------------------------- extranet
 # Le a lista "Minha responsabilidade" (Chamados.aspx?TipoBusca=lnkResponsabilidade) e devolve JSON por postMessage.
-# ponytail: depende dos ids do Repeater da Extranet (rptChamados_*); se a pagina mudar, a busca avisa, salva a pagina e nao grava nada
+# A lista vem em paginas de 20; a troca de pagina e AJAX (UpdatePanel do ASP.NET, sem navegar): o leitor le a pagina,
+# aciona o "proxima" da propria Extranet, espera o fim do AJAX e le de novo, ate juntar o total que a pagina informa.
+# ponytail: depende dos ids do Repeater da Extranet (rptChamados_*, lnkNext); se a pagina mudar, a busca avisa, salva a pagina e nao grava nada
 $ScriptFila = @'
 (() => {
   // em falha manda a pagina junto, para ajustar o leitor (vira diagnostico-extranet.html)
   const post = o => window.chrome.webview.postMessage(JSON.stringify(o.ok ? o : { ...o, html: document.documentElement.outerHTML }));
+  const progresso = (lidos, total) => window.chrome.webview.postMessage(JSON.stringify({ progresso: true, lidos, total }));
   const t = el => (el ? el.textContent : '').replace(/\s+/g, ' ').trim();
-  try {
+  const MAX_PAGINAS = 50, ESPERA_MS = 20000;
+  // le a pagina que esta na tela
+  const ler = () => {
     const total = (t(document.body).match(/Lista de Chamados \((\d+)\)/) || [])[1];
-    if (total === undefined) return post({ ok: false, erro: 'a página não mostrou a Lista de Chamados' });
+    if (total === undefined) return { erro: 'a página não mostrou a Lista de Chamados' };
     const linhas = [...document.querySelectorAll('tr[id^="ContentPlaceHolder1_rptChamados_divChamado_"]')];
-    if (linhas.length !== +total) return post({ ok: false, erro: `a página trouxe ${linhas.length} de ${total} chamados` });
+    if (linhas.length === 0 && +total > 0) return { erro: `a página não trouxe nenhum dos ${total} chamados` };
     const chamados = linhas.map(tr => {
       const oculto = n => { const i = tr.querySelector(`input[id^="ContentPlaceHolder1_rptChamados_${n}_"]`); return i ? i.value.trim() : ''; };
       const td = n => tr.querySelector(`td[id^="ContentPlaceHolder1_rptChamados_${n}_"]`);
@@ -298,9 +303,46 @@ $ScriptFila = @'
         prioridade: oculto('hddPrioridade')
       };
     });
-    if (chamados.some(c => !/^\d+$/.test(c.codigo) || !c.titulo)) return post({ ok: false, erro: 'chamado sem código ou título na lista' });
-    post({ ok: true, chamados });
-  } catch (e) { post({ ok: false, erro: 'formato da lista mudou: ' + e.message }); }
+    if (chamados.some(c => !/^\d+$/.test(c.codigo) || !c.titulo)) return { erro: 'chamado sem código ou título na lista' };
+    // "proxima" habilitado: link com __doPostBack (o desabilitado vem sem href ou com a classe aspNetDisabled)
+    const prox = document.getElementById('ContentPlaceHolder1_lnkNext');
+    const alvo = prox && !prox.classList.contains('aspNetDisabled') && ((prox.getAttribute('href') || '').match(/__doPostBack\('([^']+)','([^']*)'\)/));
+    return { total: +total, chamados, alvo };
+  };
+  const todos = new Map();
+  let paginas = 0;
+  const passo = () => {
+    try {
+      const r = ler();
+      if (r.erro) return post({ ok: false, erro: r.erro });
+      const antes = todos.size;
+      r.chamados.forEach(c => todos.set(c.codigo, c));
+      paginas++;
+      if (todos.size < r.total && r.alvo) {
+        // hazard: pagina que nao trouxe nenhum chamado novo faria o leitor girar sem sair do lugar
+        if (paginas > 1 && todos.size === antes) return post({ ok: false, erro: `a página ${paginas} repetiu os chamados da anterior` });
+        if (paginas >= MAX_PAGINAS) return post({ ok: false, erro: `a lista passou de ${MAX_PAGINAS} páginas` });
+        const prm = window.Sys && Sys.WebForms && Sys.WebForms.PageRequestManager && Sys.WebForms.PageRequestManager.getInstance();
+        if (!prm || typeof window.__doPostBack !== 'function') return post({ ok: false, erro: `a lista tem ${r.total} chamados em mais de uma página e não deu para trocar de página` });
+        progresso(todos.size, r.total);
+        const espera = setTimeout(() => { prm.remove_endRequest(fim); post({ ok: false, erro: `a página ${paginas + 1} da lista não carregou` }); }, ESPERA_MS);
+        const fim = (s, a) => {
+          prm.remove_endRequest(fim);
+          clearTimeout(espera);
+          const e = a && a.get_error && a.get_error();
+          if (e) { if (a.set_errorHandled) a.set_errorHandled(true); return post({ ok: false, erro: 'erro ao trocar de página: ' + e.message }); }
+          setTimeout(passo, 0);
+        };
+        prm.add_endRequest(fim);
+        window.__doPostBack(r.alvo[1], r.alvo[2]);
+        return;
+      }
+      const chamados = [...todos.values()];
+      if (chamados.length !== r.total) return post({ ok: false, erro: `as páginas trouxeram ${chamados.length} de ${r.total} chamados` });
+      post({ ok: true, chamados, paginas });
+    } catch (e) { post({ ok: false, erro: 'formato da lista mudou: ' + e.message }); }
+  };
+  passo();
 })();
 '@
 
@@ -488,6 +530,12 @@ function On-Navegou($e) {
 function On-Fila([string]$json) {
     if (-not $script:busca) { return }
     $r = $json | ConvertFrom-Json
+    if ($r.progresso) {
+        # fila em varias paginas: mostra o andamento e renova o prazo de 90 s (o prazo e "sem resposta", nao a busca inteira)
+        $script:buscaDesde = Get-Date
+        $UpdatedText.Text = "atualizando… $([int]$r.lidos) de $([int]$r.total)"
+        return
+    }
     if (-not $r.ok) {
         if ($r.html) { Set-Content -LiteralPath $DiagFile -Value $r.html -Encoding UTF8 }
         Stop-Busca "Não consegui ler a fila na Extranet ($($r.erro)): a fila mostra a última leitura. Cópia da página em diagnostico-extranet.html."
@@ -578,6 +626,44 @@ $xaml = @'
         </Setter.Value>
       </Setter>
     </Style>
+    <!-- barra de rolagem no tema do painel: fina, sem setas, polegar arredondado que clareia no mouse -->
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="8"/>
+      <Setter Property="MinWidth" Value="8"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Grid Background="Transparent">
+              <Track x:Name="PART_Track" IsDirectionReversed="True" Focusable="False">
+                <Track.DecreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False" IsTabStop="False"/>
+                </Track.DecreaseRepeatButton>
+                <Track.IncreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False" IsTabStop="False"/>
+                </Track.IncreaseRepeatButton>
+                <Track.Thumb>
+                  <Thumb>
+                    <Thumb.Template>
+                      <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="P" Background="#33FFFFFF" CornerRadius="3" Margin="2,2,2,2"/>
+                        <ControlTemplate.Triggers>
+                          <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="P" Property="Background" Value="#66FFFFFF"/>
+                          </Trigger>
+                          <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="P" Property="Background" Value="#88FFFFFF"/>
+                          </Trigger>
+                        </ControlTemplate.Triggers>
+                      </ControlTemplate>
+                    </Thumb.Template>
+                  </Thumb>
+                </Track.Thumb>
+              </Track>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </Window.Resources>
   <Border x:Name="Root" Margin="8" CornerRadius="10" Background="#F21F2125" BorderBrush="#33FFFFFF" BorderThickness="1">
     <Border.Effect>
@@ -605,9 +691,12 @@ $xaml = @'
         </StackPanel>
       </Grid>
       <TextBlock x:Name="Warn" Visibility="Collapsed" Foreground="#FFFBBF24" FontSize="11" TextWrapping="Wrap" Margin="12,0,12,7"/>
-      <ScrollViewer x:Name="Scroll" MaxHeight="520" VerticalScrollBarVisibility="Auto" Margin="6,0,6,7">
-        <StackPanel x:Name="List"/>
-      </ScrollViewer>
+      <StackPanel x:Name="Corpo">
+        <WrapPanel x:Name="Filtros" Visibility="Collapsed" HorizontalAlignment="Center" Margin="10,0,10,5"/>
+        <ScrollViewer x:Name="Scroll" MaxHeight="520" VerticalScrollBarVisibility="Auto" Margin="6,0,4,7">
+          <StackPanel x:Name="List" Margin="0,0,2,0"/>
+        </ScrollViewer>
+      </StackPanel>
     </StackPanel>
   </Border>
 </Window>
@@ -808,6 +897,30 @@ function Update-Warn($data) {
     } else { Show-Warn '' }
 }
 
+# status presentes na fila, do mais numeroso para o menos (empate: ordem alfabetica)
+function Get-GruposStatus($ch) {
+    return @($ch | Group-Object { [string]$_.status } | Sort-Object @{ Expression = 'Count'; Descending = $true }, Name)
+}
+
+# why: fila grande (atendimento, suporte, varias areas) fica ilegivel sem recorte; um chip por status, com a quantidade
+function Draw-FiltroStatus($ch) {
+    $Filtros.Children.Clear()
+    $grupos = Get-GruposStatus $ch
+    $sel = [string]$state.filtroStatus
+    if ($sel -and @($grupos | Where-Object { $_.Name -eq $sel }).Count -eq 0) { $sel = ''; $state.filtroStatus = $null }   # status que saiu da fila: volta para Todos
+    if ($grupos.Count -lt 2) { $Filtros.Visibility = 'Collapsed'; return '' }
+    foreach ($f in @(, @("Todos ($($ch.Count))", '')) + @($grupos | ForEach-Object { , @("$($_.Name) ($($_.Count))", [string]$_.Name) })) {
+        if ($sel -eq $f[1]) { $chip = New-Tag $f[0] '#FF3B82F6' '#FFFFFFFF' } else { $chip = New-Tag $f[0] '#26FFFFFF' '#FFD1D5DB' }
+        $chip.Tag = $f[1]
+        $chip.Margin = T 2 2 2 2
+        $chip.Cursor = [System.Windows.Input.Cursors]::Hand
+        $chip.Add_MouseLeftButtonUp({ $state.filtroStatus = [string]$this.Tag; Save-State; Render })
+        [void]$Filtros.Children.Add($chip)
+    }
+    $Filtros.Visibility = 'Visible'
+    return $sel
+}
+
 function Draw-Fila($data, $ch) {
     $TitleText.Text = 'Minha fila'
     $CountBadge.Background = $BrushBadge
@@ -822,6 +935,11 @@ function Draw-Fila($data, $ch) {
         } else { $UpdatedText.Text = '' }
         if ($script:busca) { $UpdatedText.Text = 'atualizando…' }
         if ($ch.Count -eq 0) { [void]$List.Children.Add((New-Vazio 'Nenhum chamado na sua fila.')) }
+        $sel = Draw-FiltroStatus $ch
+        if ($sel) {
+            $ch = @($ch | Where-Object { [string]$_.status -eq $sel })
+            $CountText.Text = "$($ch.Count) de $($CountText.Text)"
+        }
         $base = @($state.codigosBase | Where-Object { $_ } | ForEach-Object { [string]$_ })
         $ordenados = $ch | Sort-Object `
             @{ Expression = { if ($_.emExecucao) { 0 } else { 1 } } }, `
@@ -847,6 +965,7 @@ function Draw-Historico {
         return
     }
     foreach ($e in ($hist | Select-Object -First 60)) { [void]$List.Children.Add((New-HistRow $e)) }
+    if ($hist.Count -gt 60) { [void]$List.Children.Add((New-Vazio "Mostrando os 60 mais recentes de $($hist.Count). Para ver todos, clique com o botão direito e escolha Abrir histórico no Excel.")) }
 }
 
 # ---------------------------------------------------------------- calendario
@@ -1119,6 +1238,7 @@ function Draw-Calendario($ch) {
 
 $script:lastWrite = [datetime]::MinValue
 $script:lastRender = [datetime]::MinValue
+$script:ultimaTela = ''
 $script:alvo = $null   # chamado sob o clique direito (menu)
 
 function Render {
@@ -1135,6 +1255,13 @@ function Render {
         Process-Data $data $ch
     }
     Update-Warn $data
+    # why: com fila longa, a atualizacao automatica (15 min) nao pode jogar a lista de volta para o topo;
+    # a posicao so volta ao topo quando muda a tela (fila, historico, calendario, filtro, mes)
+    $tela = "$($state.modo)|$($state.filtroStatus)|$($script:calVista)|$($script:calMes)|$($script:calTipo)|$($script:calDia)"
+    $rolagem = 0
+    if ($tela -eq $script:ultimaTela) { $rolagem = $Scroll.VerticalOffset }
+    $script:ultimaTela = $tela
+    $Filtros.Visibility = 'Collapsed'
     $BtnHist.Foreground = $BrushIcon
     $BtnCal.Foreground = $BrushIcon
     if ($state.modo -eq 'historico') {
@@ -1146,12 +1273,13 @@ function Render {
     } else {
         Draw-Fila $data $ch
     }
+    if ($rolagem -gt 0) { $Scroll.UpdateLayout(); $Scroll.ScrollToVerticalOffset($rolagem) }
 }
 
 function Set-Recolhido([bool]$v) {
     $state.recolhido = $v
-    if ($v) { $Scroll.Visibility = 'Collapsed'; $BtnCollapse.Content = [string][char]0xE70E }
-    else    { $Scroll.Visibility = 'Visible';   $BtnCollapse.Content = [string][char]0xE70D }
+    if ($v) { $Corpo.Visibility = 'Collapsed'; $BtnCollapse.Content = [string][char]0xE70E }
+    else    { $Corpo.Visibility = 'Visible';   $BtnCollapse.Content = [string][char]0xE70D }
 }
 
 function Place-Window {
@@ -1191,7 +1319,7 @@ Remove-PlanilhaHistorico   # sobra de quando o painel fechou com o Excel aberto
 
 try {
     $win = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xml]$xaml)))
-    foreach ($n in @('Root', 'Header', 'TitleText', 'CountBadge', 'CountText', 'UpdatedText', 'BtnCal', 'BtnHist', 'BtnRefresh', 'BtnCollapse', 'BtnClose', 'Warn', 'Scroll', 'List')) {
+    foreach ($n in @('Root', 'Header', 'TitleText', 'CountBadge', 'CountText', 'UpdatedText', 'BtnCal', 'BtnHist', 'BtnRefresh', 'BtnCollapse', 'BtnClose', 'Warn', 'Corpo', 'Filtros', 'Scroll', 'List')) {
         Set-Variable -Name $n -Value $win.FindName($n) -Scope Script
     }
 
