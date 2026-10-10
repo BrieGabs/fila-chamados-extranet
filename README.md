@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="#segurança"><b>🔒 Segurança</b></a> ·
+  <a href="#segurança"><img src="docs/seguranca.svg" width="16" height="16" alt=""> <b>Segurança</b></a> ·
   <a href="#como-instalar"><b>Instalar</b></a> ·
   <a href="#primeiro-uso"><b>Primeiro uso</b></a> ·
   <a href="#conhecendo-o-painel"><b>Conhecendo o painel</b></a> ·
@@ -25,7 +25,7 @@
 > **Exclusivo para a Extranet.** O painel só funciona com a Extranet da empresa e exige uma conta com acesso a ela. Não serve para outros sistemas de chamados.
 
 > [!IMPORTANT]
-> **🔒 Segurança em primeiro lugar.** O mininet foi feito e revisado com a segurança como prioridade:
+> <img src="docs/seguranca.svg" width="16" height="16" alt=""> **Segurança em primeiro lugar.** O mininet foi feito e revisado com a segurança como prioridade:
 >
 > - **Sua senha nunca passa pelo painel.** Você entra na própria página da Extranet; o painel não lê, não guarda e não envia a senha.
 > - **Nada sai do seu computador.** O painel só conversa com a Extranet, e o navegador dele não abre nenhum outro site.
@@ -43,8 +43,8 @@
 - **Atualização sozinha.** O painel lê a Extranet a cada 15 minutos enquanto a sua sessão estiver aberta.
 - **Um clique para abrir.** Clique em um chamado e ele abre na Extranet.
 - **Histórico e calendário.** Veja o que saiu da sua fila, o que chegou em cada dia e em quais dias cada chamado esteve em execução.
-- **🔒 Sem senha guardada.** Você entra na própria página da Extranet. O painel não salva sua senha.
-- **🔒 Dados cifrados.** O que o painel guarda no seu computador fica cifrado com a sua conta do Windows. Veja [Segurança](#segurança).
+- <img src="docs/seguranca.svg" width="16" height="16" alt=""> **Sem senha guardada.** Você entra na própria página da Extranet. O painel não salva sua senha.
+- <img src="docs/seguranca.svg" width="16" height="16" alt=""> **Dados cifrados.** O que o painel guarda no seu computador fica cifrado com a sua conta do Windows. Veja [Segurança](#segurança).
 
 ## Antes de começar
 
@@ -307,16 +307,16 @@ O painel foi feito e revisado com a segurança como prioridade, para ser usado c
 
 ### O que está protegido
 
-| | Proteção |
+| Item | Proteção |
 |---|---|
-| 🔑 **Senha** | Nunca passa pelo painel. Você entra na própria página da Extranet. |
-| 🍪 **Sessão** | Fica no navegador embutido (WebView2), em `%LOCALAPPDATA%\FilaChamados`, com os cookies protegidos pela criptografia do Windows. |
-| 🔐 **Arquivos de dados** | `chamados.json`, `estado.json`, `execucao.json` e `historico.json` ficam cifrados com a sua conta do Windows (DPAPI). |
-| 🌐 **Endereço da Extranet** | Não está no código nem no GitHub. É pedido no primeiro uso e fica só no seu computador, cifrado. |
-| 🧭 **Navegador do painel** | Só abre a Extranet. Links, popups e redirecionamentos para outros sites são bloqueados ou vão para o seu navegador padrão, sem a sua sessão. |
-| ✅ **Leitura da fila** | Só é aceita se vier de uma página da Extranet, e o código de cada chamado é conferido antes de virar link. |
-| 📊 **Planilha do histórico** | Só existe enquanto você usa: é gerada numa pasta só sua e apagada quando o painel fecha. Sai sem fórmulas, então o Excel não executa nada que venha de um chamado. |
-| 🧩 **Componentes** | As DLLs do WebView2 são as originais da Microsoft, com assinatura digital. |
+| **Senha** | Nunca passa pelo painel. Você entra na própria página da Extranet. |
+| **Sessão** | Fica no navegador embutido (WebView2), em `%LOCALAPPDATA%\FilaChamados`, com os cookies protegidos pela criptografia do Windows. |
+| **Arquivos de dados** | `chamados.json`, `estado.json`, `execucao.json` e `historico.json` ficam cifrados com a sua conta do Windows (DPAPI). |
+| **Endereço da Extranet** | Não está no código nem no GitHub. É pedido no primeiro uso e fica só no seu computador, cifrado. |
+| **Navegador do painel** | Só abre a Extranet. Links, popups e redirecionamentos para outros sites são bloqueados ou vão para o seu navegador padrão, sem a sua sessão. |
+| **Leitura da fila** | Só é aceita se vier de uma página da Extranet, e o código de cada chamado é conferido antes de virar link. |
+| **Planilha do histórico** | Só existe enquanto você usa: é gerada numa pasta só sua e apagada quando o painel fecha. Sai sem fórmulas, então o Excel não executa nada que venha de um chamado. |
+| **Componentes** | As DLLs do WebView2 são as originais da Microsoft, com assinatura digital. |
 
 ### Seus cuidados
 
