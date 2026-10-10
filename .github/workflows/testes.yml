@@ -32,6 +32,9 @@ jobs:
     name: Análise de segurança (PSScriptAnalyzer)
     runs-on: windows-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write   # envia o resultado para a aba Security (Code Scanning)
     steps:
       - name: Baixar o código
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -55,8 +58,24 @@ jobs:
           )
           $problemas = @(Get-ChildItem -Filter *.ps1 | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -IncludeRule $seguranca })
           $problemas | Format-Table -AutoSize | Out-String -Width 200
+          # Resultado das regras de seguranca em SARIF, para a aba Security (o estilo fica so no log)
+          $regras = @($seguranca | ForEach-Object { @{ id = $_; shortDescription = @{ text = $_ }; helpUri = "https://learn.microsoft.com/powershell/utility-modules/psscriptanalyzer/rules/$($_ -replace '^PS','')" } })
+          $resultados = @($problemas | ForEach-Object {
+            @{ ruleId = $_.RuleName; level = 'error'; message = @{ text = $_.Message }
+               locations = @(@{ physicalLocation = @{ artifactLocation = @{ uri = $_.ScriptName }; region = @{ startLine = [Math]::Max(1, $_.Line); startColumn = [Math]::Max(1, $_.Column) } } }) }
+          })
+          $sarif = @{ version = '2.1.0'; '$schema' = 'https://json.schemastore.org/sarif-2.1.0.json'
+                      runs = @(@{ tool = @{ driver = @{ name = 'PSScriptAnalyzer'; version = '1.25.0'; informationUri = 'https://github.com/PowerShell/PSScriptAnalyzer'; rules = $regras } }; results = $resultados }) }
+          [IO.File]::WriteAllText("$PWD\psscriptanalyzer.sarif", ($sarif | ConvertTo-Json -Depth 20))
           # Demais regras: so informativo (estilo, nomes de funcoes etc.)
           $outros = @(Get-ChildItem -Filter *.ps1 | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Severity Warning, Error -ExcludeRule $seguranca })
           "Avisos de estilo (nao reprovam): $($outros.Count)"
           if ($problemas.Count) { throw "PSScriptAnalyzer encontrou $($problemas.Count) problema(s) de seguranca" }
           'Nenhum problema de seguranca encontrado'
+
+      - name: Enviar para a aba Security
+        if: always() && hashFiles('psscriptanalyzer.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: psscriptanalyzer.sarif
+          category: psscriptanalyzer

@@ -48,6 +48,12 @@ A versão instalada aparece no menu do botão direito do painel ("mininet vX.Y.Z
 
 - **As DLLs do WebView2** (`webview2/`) são as originais do SDK da Microsoft, versão 1.0.4191.47, com assinatura digital da Microsoft Corporation.
 
+### Releases e código
+
+- **O ZIP de cada release é assinado** com Sigstore pelo workflow **Assinar release**, que refaz o ZIP a partir da tag e só assina se ele for idêntico ao publicado. A assinatura (`fila-chamados.zip.sigstore.json`) fica anexada na release e pode ser conferida com `gh attestation verify fila-chamados.zip -R BrieGabs/fila-chamados-extranet`.
+- **O branch `main` é protegido:** mudanças só entram por pull request, com o autoteste e a análise de segurança aprovados, e o histórico não pode ser reescrito nem apagado.
+- **A análise de segurança do código** (PSScriptAnalyzer) roda a cada mudança, e o resultado fica na aba Security do repositório.
+
 ## O que o painel não protege (cuidados)
 
 - **Enquanto o Excel está aberto, a planilha do histórico fica legível**, e uma cópia salva pelo **Salvar como** do Excel não é apagada pelo painel. Ela tem nomes de clientes e títulos de chamados: não envie para fora da empresa.

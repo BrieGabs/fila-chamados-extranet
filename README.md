@@ -80,6 +80,12 @@ Get-FileHash "$env:USERPROFILE\Downloads\fila-chamados.zip" -Algorithm SHA256
 ```
 
 O valor mostrado precisa ser igual ao publicado na [página da release](https://github.com/BrieGabs/fila-chamados-extranet/releases/latest). Se for diferente, apague o ZIP e não abra o painel.
+
+O ZIP também é **assinado** pelo GitHub (Sigstore), com o registro de que foi gerado a partir do código deste repositório. Quem tem o [GitHub CLI](https://cli.github.com/) pode conferir a assinatura:
+
+```
+gh attestation verify fila-chamados.zip -R BrieGabs/fila-chamados-extranet
+```
 </details>
 
 ### 2. Desbloqueie e extraia
@@ -326,9 +332,10 @@ O painel foi feito e revisado com a segurança como prioridade, para ser usado c
 
 Os selos no topo desta página não são enfeite: cada um aponta para uma verificação que qualquer pessoa pode abrir.
 
-- **Testes:** a cada mudança, um Windows do GitHub roda o autoteste (incluindo os testes de segurança) e o PSScriptAnalyzer, o analisador de código da Microsoft, com as regras de segurança.
+- **Testes:** a cada mudança, um Windows do GitHub roda o autoteste (incluindo os testes de segurança) e o PSScriptAnalyzer, o analisador de código da Microsoft, com as regras de segurança. O resultado da análise vai para a aba Security do repositório.
+- **`main` protegido:** nenhuma mudança entra direto. Tudo passa por pull request, e só é aceito com os testes e a análise de segurança aprovados. O histórico não pode ser reescrito nem apagado.
 - **OpenSSF Scorecard:** a Open Source Security Foundation avalia o repositório toda semana e publica uma nota de 0 a 10. Clique no selo para ver cada item avaliado.
-- **Releases conferíveis:** cada release traz a impressão digital SHA-256 do ZIP, para você conferir que o arquivo baixado é o publicado (veja [como conferir](#1-baixe-o-zip)).
+- **Releases conferíveis e assinadas:** cada release traz a impressão digital SHA-256 do ZIP e uma assinatura Sigstore, que comprova que o ZIP foi gerado a partir do código deste repositório (veja [como conferir](#1-baixe-o-zip)).
 
 ### Encontrou um problema de segurança?
 
@@ -357,7 +364,7 @@ Os selos no topo desta página não são enfeite: cada um aponta para uma verifi
 | `CHANGELOG.md` | O que mudou em cada versão |
 | `LICENSE` | Licença MIT |
 | `CONTRIBUTING.md` | Como relatar erros e enviar mudanças |
-| `.github/` | Testes automáticos, OpenSSF Scorecard e Dependabot |
+| `.github/` | Testes automáticos, assinatura das releases, OpenSSF Scorecard e Dependabot |
 | `FilaChamados.ico` | Ícone |
 | `webview2/` | DLLs do SDK do Microsoft WebView2 (versão 1.0.4191.47), com a licença da Microsoft |
 | `docs/` | Imagens desta página |
@@ -378,12 +385,14 @@ Limitações conhecidas:
 
 O projeto usa [versionamento semântico](https://semver.org/lang/pt-BR/): `MAIOR.MENOR.CORREÇÃO`. Veja no [CHANGELOG](CHANGELOG.md) quando subir cada número.
 
-1. Atualize `$Versao` no começo do `FilaChamados.ps1`.
+O `main` é protegido: a versão entra por pull request, como qualquer outra mudança.
+
+1. Numa branch, atualize `$Versao` no começo do `FilaChamados.ps1`.
 2. Registre as mudanças no `CHANGELOG.md`, numa seção nova com a versão e a data.
 3. Rode o `Testar.ps1` no Windows e confira se termina com `OK`.
-4. Faça o commit e crie a tag: `git tag -a vX.Y.Z -m "Versão X.Y.Z"`.
-5. Envie o commit e a tag: `git push origin main vX.Y.Z`.
-6. Gere o ZIP e publique a release:
+4. Faça o commit, envie a branch e abra o pull request. Faça o merge quando os testes passarem.
+5. Atualize o `main` local, crie a tag e envie: `git tag -a vX.Y.Z -m "Versão X.Y.Z"` e `git push origin vX.Y.Z`.
+6. Gere o ZIP e publique a release, com o SHA-256 do ZIP nas notas:
 
    ```
    git archive --prefix=fila-chamados/ -o fila-chamados.zip vX.Y.Z
@@ -391,6 +400,8 @@ O projeto usa [versionamento semântico](https://semver.org/lang/pt-BR/): `MAIOR
    ```
 
    O ZIP precisa se chamar `fila-chamados.zip` para o link de download do README continuar funcionando.
+
+7. Ao publicar a release, o workflow **Assinar release** refaz o ZIP a partir da tag, confere que é idêntico ao publicado e anexa a assinatura `fila-chamados.zip.sigstore.json`. Confira na release se ela apareceu. Se o workflow falhar dizendo que o ZIP não é idêntico, gere o ZIP de novo a partir da tag e substitua o da release com `gh release upload vX.Y.Z fila-chamados.zip --clobber`.
 
 ## Licença
 
