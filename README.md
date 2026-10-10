@@ -4,7 +4,7 @@
   <a href="https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/testes.yml"><img src="https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/testes.yml/badge.svg" alt="Testes"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/BrieGabs/fila-chamados-extranet"><img src="https://api.scorecard.dev/projects/github.com/BrieGabs/fila-chamados-extranet/badge" alt="OpenSSF Scorecard"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-blue" alt="Licença MIT"></a>
-  <img src="https://komarev.com/ghpvc/?username=BrieGabs-fila-chamados-extranet&label=visualiza%C3%A7%C3%B5es&color=blue" alt="Visualizações desta página">
+  <img src="https://hits.sh/github.com/BrieGabs/fila-chamados-extranet.svg?label=visualiza%C3%A7%C3%B5es&color=007ec6" alt="Visualizações desta página">
 </p>
 
 <p align="center">
