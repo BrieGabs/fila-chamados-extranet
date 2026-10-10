@@ -58,5 +58,7 @@ A versão instalada aparece no menu do botão direito do painel ("Fila de Chamad
 ## Como avisar sobre um problema de segurança
 
 - **Não abra uma issue pública** com detalhes do problema, e nunca anexe a planilha do histórico, o `diagnostico-extranet.html` ou prints com dados de clientes.
-- Fale diretamente com quem mantém o repositório. Conte o que aconteceu, a versão do painel e como reproduzir, com dados fictícios.
+- **Use o aviso privado do GitHub:** [Security → Report a vulnerability](https://github.com/BrieGabs/fila-chamados-extranet/security/advisories/new). Só quem mantém o repositório vê o aviso.
+- Conte o que aconteceu, a versão do painel e como reproduzir, com dados fictícios.
+- **Prazo:** a primeira resposta sai em até 14 dias. Quando o problema for confirmado, a correção é lançada o quanto antes, e quem avisou recebe o crédito na release, se quiser.
 - Correções de segurança saem como versão de correção (por exemplo, 1.0.1) e ficam registradas no [CHANGELOG](CHANGELOG.md).

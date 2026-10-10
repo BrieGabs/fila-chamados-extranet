@@ -1,6 +1,12 @@
 <h1 align="center">Fila de Chamados (Extranet)</h1>
 
 <p align="center">
+  <a href="https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/testes.yml"><img src="https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/testes.yml/badge.svg" alt="Testes"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/BrieGabs/fila-chamados-extranet"><img src="https://api.scorecard.dev/projects/github.com/BrieGabs/fila-chamados-extranet/badge" alt="OpenSSF Scorecard"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-blue" alt="Licença MIT"></a>
+</p>
+
+<p align="center">
   Sua fila de chamados da Extranet, sempre visível no canto da tela.
 </p>
 
@@ -261,6 +267,14 @@ O painel foi feito e revisado com a segurança como prioridade, para ser usado c
 
 Como em qualquer sistema, parte da segurança depende de quem usa, por exemplo não enviar a planilha do histórico, ou uma cópia salva dela, para fora da empresa. Esses cuidados, os detalhes técnicos e como avisar sobre um problema estão em [SECURITY.md](SECURITY.md).
 
+**Verificado automaticamente**
+
+Os selos no topo desta página não são enfeite: cada um aponta para uma verificação que qualquer pessoa pode abrir.
+
+- **Testes:** a cada mudança, um Windows do GitHub roda o autoteste (incluindo os testes de segurança) e o PSScriptAnalyzer, o analisador de código da Microsoft, com as regras de segurança.
+- **OpenSSF Scorecard:** a Open Source Security Foundation avalia o repositório toda semana e publica uma nota de 0 a 10. Clique no selo para ver cada item avaliado.
+- **Releases conferíveis:** cada release traz a impressão digital SHA-256 do ZIP, para você conferir que o arquivo baixado é o publicado.
+
 **Resumo das proteções**
 
 - **Senha:** nunca passa pelo painel. Você entra na própria página da Extranet.
@@ -289,6 +303,8 @@ Como em qualquer sistema, parte da segurança depende de quem usa, por exemplo n
 | `SECURITY.md` | O que o painel protege, o que não protege e como avisar sobre problemas |
 | `CHANGELOG.md` | O que mudou em cada versão |
 | `LICENSE` | Licença MIT |
+| `CONTRIBUTING.md` | Como relatar erros e enviar mudanças |
+| `.github/` | Testes automáticos, OpenSSF Scorecard e Dependabot |
 | `FilaChamados.ico` | Ícone |
 | `webview2/` | DLLs do SDK do Microsoft WebView2 (versão 1.0.4191.47), com a licença da Microsoft |
 | `docs/` | Imagens desta página |

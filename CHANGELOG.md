@@ -8,6 +8,16 @@ O projeto segue o [versionamento semântico](https://semver.org/lang/pt-BR/) (`M
 - **MENOR** (1.1.0): função nova que não quebra nada.
 - **CORREÇÃO** (1.0.1): correção de erro ou de segurança.
 
+## [Não lançado]
+
+### Adicionado
+
+- Testes e análise de segurança (PSScriptAnalyzer) automáticos num Windows do GitHub, a cada envio.
+- OpenSSF Scorecard: nota de segurança do repositório, atualizada toda semana.
+- Dependabot para manter as ações dos workflows atualizadas.
+- Guia de contribuição ([CONTRIBUTING.md](CONTRIBUTING.md)).
+- Aviso privado de vulnerabilidades pelo GitHub, com prazo de resposta, no [SECURITY.md](SECURITY.md).
+
 ## [1.0.0] - 2026-10-10
 
 Primeira versão segura do painel.

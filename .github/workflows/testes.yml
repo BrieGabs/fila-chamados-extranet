@@ -1,0 +1,62 @@
+# Testes e análise de segurança do código, num Windows do GitHub, a cada envio
+name: Testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    name: Autoteste (Testar.ps1)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rodar o autoteste
+        shell: powershell   # Windows PowerShell 5.1, o mesmo que o painel usa
+        run: |
+          $saida = & powershell -NoProfile -ExecutionPolicy Bypass -File .\Testar.ps1 2>&1
+          $saida
+          if ($LASTEXITCODE -ne 0 -or ($saida | Select-Object -Last 1) -ne 'OK') { throw 'O autoteste falhou' }
+
+  analise:
+    name: Análise de segurança (PSScriptAnalyzer)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Analisar os scripts
+        shell: powershell
+        run: |
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
+          # Regras de segurança da Microsoft: qualquer ocorrência reprova
+          $seguranca = @(
+            'PSAvoidUsingInvokeExpression',
+            'PSAvoidUsingPlainTextForPassword',
+            'PSAvoidUsingConvertToSecureStringWithPlainText',
+            'PSAvoidUsingUsernameAndPasswordParams',
+            'PSUsePSCredentialType',
+            'PSAvoidUsingComputerNameHardcoded',
+            'PSAvoidUsingAllowUnencryptedAuthentication',
+            'PSAvoidUsingBrokenHashAlgorithms'
+          )
+          $problemas = @(Get-ChildItem -Filter *.ps1 | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -IncludeRule $seguranca })
+          $problemas | Format-Table -AutoSize | Out-String -Width 200
+          # Demais regras: só informativo (estilo, nomes de funções etc.)
+          $outros = @(Get-ChildItem -Filter *.ps1 | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Severity Warning, Error -ExcludeRule $seguranca })
+          "Avisos de estilo (não reprovam): $($outros.Count)"
+          if ($problemas.Count) { throw "PSScriptAnalyzer encontrou $($problemas.Count) problema(s) de segurança" }
+          'Nenhum problema de segurança encontrado'

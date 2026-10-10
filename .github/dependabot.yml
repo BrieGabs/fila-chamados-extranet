@@ -1,0 +1,7 @@
+# Mantém as ações dos workflows atualizadas (abre um PR quando sai versão nova)
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

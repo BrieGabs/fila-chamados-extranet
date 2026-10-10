@@ -1,0 +1,45 @@
+# OpenSSF Scorecard: nota automática de segurança do repositório (selo no README)
+# https://github.com/ossf/scorecard-action
+name: Scorecard
+
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: '30 6 * * 1'   # toda segunda-feira
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  analise:
+    name: Análise do Scorecard
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write   # envia o resultado para a aba Security
+      id-token: write          # publica a nota no site da OpenSSF (selo)
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rodar o Scorecard
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Guardar o resultado
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SARIF
+          path: results.sarif
+          retention-days: 5
+
+      - name: Enviar para a aba Security
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: results.sarif
