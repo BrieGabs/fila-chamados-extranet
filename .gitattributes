@@ -2,3 +2,5 @@
 * -text
 *.dll binary
 *.ico binary
+# Fora do ZIP das releases (git archive): imagens do README
+docs export-ignore

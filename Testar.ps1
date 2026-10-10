@@ -30,6 +30,11 @@ Confere ((Get-Content -LiteralPath $teste -Raw).StartsWith('DPAPI:') -and (Get-C
 Set-Content -LiteralPath $teste -Value '{ "cliente": "aberto" }' -Encoding UTF8
 Confere ((Read-Json $teste).cliente -eq 'aberto') 'dpapi: le .json aberto de versao antiga'
 Remove-Item -LiteralPath $teste
+$planilha = Join-Path $env:TEMP 'FilaChamadosTeste-historico.csv'
+Export-HistoricoCsv @([pscustomobject]@{ codigo = '1'; saiuEm = '2026-09-24T17:55:00.000Z'; titulo = '=1+1'; cliente = 'CLIENTE EXEMPLO A'; tipo = 'Incidência'; diasAberto = 3; url = 'https://x/1' }) $planilha
+$csv = Get-Content -LiteralPath $planilha -Raw -Encoding UTF8
+Confere ($csv -match "'=1\+1" -and $csv -match 'Incidência' -and $csv -match 'Título') 'planilha: gerada na hora, sem formula e com acentos'
+Remove-Item -LiteralPath $planilha
 
 # ---------------------------------------------------------------- calendario
 $fila = @([pscustomobject]@{ codigo = '1'; criacao = '23/06/2026' }, [pscustomobject]@{ codigo = '2'; criacao = '' })

@@ -3,14 +3,15 @@
 # automatica a cada 15 min) le a fila na Extranet por um navegador WebView2 do
 # proprio painel: o login e feito pela pessoa na janelinha que abre, sem senha
 # salva. Quando um chamado sai da fila, ele
-# vai para o historico (historico.json + historico.csv para abrir no Excel).
+# vai para o historico (historico.json; a planilha para o Excel e gerada so quando e aberta).
 # Os dias em que a leitura ve um chamado "em execucao" ficam em execucao.json (Gantt).
 # So mostra chamados que passaram pela sua fila.
-# Os .json de dados ficam cifrados com a conta do Windows (DPAPI); o historico.csv fica aberto para o Excel.
+# Os .json de dados ficam cifrados com a conta do Windows (DPAPI).
 # O endereco da Extranet e pedido no primeiro Recarregar e fica no estado.json (cifrado); nao vem no codigo.
 # Clique num chamado para abrir no navegador. Botao direito: mais opcoes.
 
 $ErrorActionPreference = 'Stop'
+$Versao = '1.0.0'   # versionamento semantico; mudou aqui, atualize o CHANGELOG.md e crie a tag vX.Y.Z
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
 $ScriptPath    = $MyInvocation.MyCommand.Path
@@ -18,7 +19,8 @@ $Dir           = Split-Path -Parent $ScriptPath
 $DataFile      = Join-Path $Dir 'chamados.json'
 $StateFile     = Join-Path $Dir 'estado.json'
 $HistFile      = Join-Path $Dir 'historico.json'
-$HistCsv       = Join-Path $Dir 'historico.csv'
+$HistCsv       = Join-Path $env:LOCALAPPDATA 'FilaChamados\historico.csv'   # temporaria: so existe enquanto o Excel usa
+$HistCsvAntigo = Join-Path $Dir 'historico.csv'
 $ExecFile      = Join-Path $Dir 'execucao.json'
 $WebDir        = Join-Path $Dir 'webview2'
 $WebPerfil     = Join-Path $env:LOCALAPPDATA 'FilaChamados\WebView2'
@@ -120,8 +122,10 @@ function Get-TextoCsv([string]$s) {
 function Save-Historico($list) {
     $arr = @($list | Sort-Object { Get-Stamp $_.saiuEm } -Descending)
     try { Write-Json $arr 4 $HistFile } catch {}
-    try {
-        $arr | Select-Object `
+}
+
+function Export-HistoricoCsv($arr, [string]$path) {
+    $arr | Select-Object `
             @{ n = 'Código'; e = { Get-TextoCsv $_.codigo } },
             @{ n = 'Fora da fila desde'; e = { $d = Get-DataLocal $_.saiuEm; if ($d) { $d.ToString('dd/MM/yyyy') } else { '' } } },
             @{ n = 'Status final'; e = { Get-TextoCsv $_.statusFinal } },
@@ -133,8 +137,34 @@ function Save-Historico($list) {
             @{ n = 'Criado em'; e = { Get-TextoCsv $_.criacao } },
             @{ n = 'Dias em aberto'; e = { $_.diasAberto } },
             @{ n = 'Link'; e = { $_.url } } |
-            Export-Csv -LiteralPath $HistCsv -NoTypeInformation -Delimiter ';' -Encoding UTF8
-    } catch {}
+            Export-Csv -LiteralPath $path -NoTypeInformation -Delimiter ';' -Encoding UTF8
+}
+
+# why: a planilha aberta so existe enquanto e usada; o historico fica guardado no historico.json, cifrado.
+# Ela e gerada em %LOCALAPPDATA% (fora da pasta do painel e do OneDrive) e apagada quando o painel fecha
+function Open-HistoricoExcel {
+    $h = Get-Historico
+    $hist = @($h | Sort-Object { Get-Stamp $_.saiuEm } -Descending)
+    if ($hist.Count -eq 0) {
+        [void][System.Windows.MessageBox]::Show('O histórico ainda está vazio. Ele começa a encher quando um chamado sair da sua fila.', 'Fila de chamados')
+        return
+    }
+    try {
+        [void](New-Item -ItemType Directory -Force -Path (Split-Path -Parent $HistCsv))
+        Export-HistoricoCsv $hist $HistCsv
+    } catch {
+        # hazard: o Excel trava a planilha enquanto ela esta aberta; ai so traz de volta a que ja esta aberta
+        if (-not (Test-Path -LiteralPath $HistCsv)) {
+            [void][System.Windows.MessageBox]::Show("Não consegui gerar a planilha do histórico:`n$($_.Exception.Message)", 'Fila de chamados')
+            return
+        }
+    }
+    Start-Process $HistCsv
+}
+
+# apaga a planilha temporaria e a historico.csv que versoes antes da 1.0.0 deixavam aberta na pasta do painel
+function Remove-PlanilhaHistorico {
+    foreach ($p in @($HistCsv, $HistCsvAntigo)) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
 }
 
 # prev = fila anterior, atual = fila nova, saidosData = saidos com status final (vindos da verificacao)
@@ -1157,6 +1187,8 @@ function Toggle-Startup {
     $miStartup.IsChecked = (Test-Path -LiteralPath $StartupLnk)
 }
 
+Remove-PlanilhaHistorico   # sobra de quando o painel fechou com o Excel aberto
+
 try {
     $win = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xml]$xaml)))
     foreach ($n in @('Root', 'Header', 'TitleText', 'CountBadge', 'CountText', 'UpdatedText', 'BtnCal', 'BtnHist', 'BtnRefresh', 'BtnCollapse', 'BtnClose', 'Warn', 'Scroll', 'List')) {
@@ -1201,10 +1233,7 @@ try {
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Trocar endereço da Extranet'
     $mi.Add_Click({ if (-not $script:busca -and (Pedir-Extranet)) { Start-Busca 'manual' } }); [void]$menu.Items.Add($mi)
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Abrir histórico no Excel'
-    $mi.Add_Click({
-            if (Test-Path -LiteralPath $HistCsv) { Start-Process $HistCsv }
-            else { [void][System.Windows.MessageBox]::Show('O histórico ainda está vazio. Ele começa a encher quando um chamado sair da sua fila.', 'Fila de chamados') }
-        }); [void]$menu.Items.Add($mi)
+    $mi.Add_Click({ Open-HistoricoExcel }); [void]$menu.Items.Add($mi)
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Recarregar da Extranet'
     $mi.Add_Click({ Render; Start-Busca 'manual' }); [void]$menu.Items.Add($mi)
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Voltar para o canto da tela'
@@ -1213,6 +1242,8 @@ try {
     $miStartup.IsChecked = (Test-Path -LiteralPath $StartupLnk)
     $miStartup.Add_Click({ Toggle-Startup }); [void]$menu.Items.Add($miStartup)
     [void]$menu.Items.Add((New-Object System.Windows.Controls.Separator))
+    $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = "Fila de Chamados v$Versao"; $mi.IsEnabled = $false
+    [void]$menu.Items.Add($mi)
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Fechar'
     $mi.Add_Click({ $win.Close() }); [void]$menu.Items.Add($mi)
     $Root.ContextMenu = $menu
@@ -1243,5 +1274,6 @@ try {
 } catch {
     [void][System.Windows.MessageBox]::Show("A janelinha da fila de chamados encontrou um erro:`n`n$($_.Exception.Message)`n`nLinha: $($_.InvocationInfo.ScriptLineNumber)", 'Fila de chamados')
 } finally {
+    Remove-PlanilhaHistorico
     $mutex.ReleaseMutex()
 }

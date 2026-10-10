@@ -12,7 +12,8 @@
   <a href="#como-instalar"><b>Instalar</b></a> ·
   <a href="#primeiro-uso"><b>Primeiro uso</b></a> ·
   <a href="#conhecendo-o-painel"><b>Conhecendo o painel</b></a> ·
-  <a href="#problemas-comuns"><b>Problemas comuns</b></a>
+  <a href="#problemas-comuns"><b>Problemas comuns</b></a> ·
+  <a href="#segurança"><b>Segurança</b></a>
 </p>
 
 > **Exclusivo para a Extranet.** O painel só funciona com a Extranet da empresa e exige uma conta com acesso a ela. Não serve para outros sistemas de chamados.
@@ -26,6 +27,7 @@
 - **Um clique para abrir.** Clique em um chamado e ele abre na Extranet.
 - **Histórico e calendário.** Veja o que saiu da sua fila, o que chegou em cada dia e em quais dias cada chamado esteve em execução.
 - **Sem senha guardada.** Você entra na própria página da Extranet. O painel não salva sua senha.
+- **Dados protegidos.** O que o painel guarda no seu computador fica cifrado com a sua conta do Windows. Veja [Segurança](#segurança).
 
 ## Antes de começar
 
@@ -44,9 +46,9 @@ Não é preciso instalar nenhum programa. O painel usa o PowerShell e o WebView2
 
 ### 1. Baixe o ZIP
 
-[**Baixar o ZIP do painel**](https://github.com/BrieGabs/fila-chamados-extranet/archive/refs/heads/main.zip)
+[**Baixar o ZIP da versão mais recente**](https://github.com/BrieGabs/fila-chamados-extranet/releases/latest/download/fila-chamados.zip)
 
-Ou, no topo desta página, clique em **Code** e depois em **Download ZIP**.
+O link sempre baixa a última versão publicada. As versões anteriores e o que mudou em cada uma estão em [Releases](https://github.com/BrieGabs/fila-chamados-extranet/releases) e no [CHANGELOG](CHANGELOG.md).
 
 ### 2. Desbloqueie e extraia
 
@@ -132,7 +134,7 @@ Quando um chamado sai da sua fila, ele passa para o histórico, com o dia em que
   <img src="docs/historico.png" width="414" alt="Tela de histórico com quatro chamados que saíram da fila">
 </p>
 
-O histórico também é salvo em `historico.csv`, que abre no Excel: botão direito no painel, **Abrir histórico no Excel**.
+Para ver o histórico no Excel, clique com o botão direito no painel e escolha **Abrir histórico no Excel**. A planilha é gerada na hora em que você abre, numa pasta só sua, e apagada quando você fecha o painel. Se quiser guardar uma cópia, use **Salvar como** no Excel.
 
 ### Calendário e Gantt
 
@@ -165,11 +167,12 @@ Clique com o botão direito em qualquer ponto do painel.
 | **Copiar código** | Copia o código do chamado em que você clicou |
 | **Copiar código e título** | Copia código e título, prontos para colar em uma mensagem |
 | **Abrir minha fila na Extranet** | Abre a lista completa no seu navegador |
-| **Abrir histórico no Excel** | Abre o `historico.csv` |
+| **Abrir histórico no Excel** | Gera a planilha do histórico e abre no Excel |
 | **Recarregar da Extranet** | O mesmo que o botão Recarregar |
 | **Trocar endereço da Extranet** | Pede o endereço da Extranet de novo |
 | **Voltar para o canto da tela** | Devolve o painel ao canto inferior direito |
 | **Iniciar com o Windows** | Liga ou desliga a abertura automática |
+| **Fila de Chamados vX.Y.Z** | Mostra a versão instalada (não é clicável) |
 | **Fechar** | Fecha o painel |
 
 As duas opções de copiar só aparecem quando o clique foi em cima de um chamado.
@@ -241,13 +244,37 @@ O atalho de inicialização aponta para a pasta antiga. Abra o painel pela pasta
 4. Para apagar também a sessão da Extranet guardada pelo navegador do painel, apague a pasta `%LOCALAPPDATA%\FilaChamados`.
 </details>
 
-## Seus dados
+## Segurança
 
-- O painel grava seus dados **na própria pasta**: `chamados.json`, `estado.json`, `execucao.json`, `historico.json` e `historico.csv`.
+O painel foi feito e revisado com a segurança como prioridade, para ser usado com tranquilidade pelos colaboradores e pela empresa. A versão 1.0.0 é a primeira com todas as proteções abaixo.
+
+**Para os colaboradores**
+
+- **Sua senha fica só com você.** O painel não lê, não guarda e não envia a senha.
+- **Seus dados ficam no seu computador.** Nada é enviado para outro lugar, e os arquivos de dados do painel ficam cifrados com a sua conta do Windows.
+
+**Para a empresa**
+
+- **O repositório não tem dados da empresa nem de clientes:** nem o endereço da Extranet, nem nomes de clientes, nem chamados reais. Exemplos e imagens usam dados fictícios.
+- **O painel só conversa com a Extranet,** e o navegador dele não abre outros sites.
+- **O acesso continua sendo o da Extranet:** o painel só mostra o que a pessoa já vê com o próprio login.
+
+Como em qualquer sistema, parte da segurança depende de quem usa, por exemplo não enviar a planilha do histórico, ou uma cópia salva dela, para fora da empresa. Esses cuidados, os detalhes técnicos e como avisar sobre um problema estão em [SECURITY.md](SECURITY.md).
+
+**Resumo das proteções**
+
+- **Senha:** nunca passa pelo painel. Você entra na própria página da Extranet.
+- **Endereço da Extranet:** não está no código. Ele é pedido no primeiro uso e fica só no seu computador, cifrado.
+- **Navegador do painel:** só abre a Extranet. Links para outros sites vão para o seu navegador padrão.
+- **Planilha do histórico:** só existe enquanto você usa. Ela é gerada na hora em que você abre, numa pasta só sua, e apagada quando você fecha o painel. Também sai sem fórmulas: o Excel não executa nada que venha de um chamado.
+
+### Seus dados
+
+- O painel grava seus dados **na própria pasta**: `chamados.json`, `estado.json`, `execucao.json` e `historico.json`.
 - Nada é enviado para outro lugar. O painel só conversa com a Extranet.
 - Esses arquivos contêm nomes de clientes e títulos de chamados. Eles já estão no `.gitignore`; não os publique.
 - **Os `.json` ficam cifrados com a sua conta do Windows.** Se a pasta for copiada para outro computador, aberta por outro usuário ou sincronizada no OneDrive, eles ficam ilegíveis. Só a sua conta, no seu computador, consegue ler.
-- O `historico.csv` fica aberto, porque precisa abrir no Excel. Trate-o como dado da empresa.
+- A planilha do histórico não fica na pasta do painel. Ela é gerada na hora em que você abre, numa pasta só sua, e apagada quando você fecha o painel. Se o Excel ainda estiver aberto nessa hora, ela é apagada na próxima vez que o painel abrir.
 - O endereço da Extranet também fica no `estado.json`, cifrado. Ele não aparece no código nem no GitHub.
 - Se você trocar de computador ou de conta do Windows, os `.json` antigos não abrem na conta nova. Apague `chamados.json`, `estado.json`, `execucao.json` e `historico.json` da pasta: o painel recomeça do zero e pede o endereço de novo.
 - Sua senha não é salva pelo painel. A sessão da Extranet fica guardada pelo navegador embutido em `%LOCALAPPDATA%\FilaChamados`.
@@ -258,7 +285,10 @@ O atalho de inicialização aponta para a pasta antiga. Abra o painel pela pasta
 |---|---|
 | `FilaChamados.ps1` | O painel (WPF + WebView2) |
 | `Abrir Fila de Chamados.cmd` | Abre o painel sem janela de console |
-| `Testar.ps1` | Autoteste das funções (datas, calendário, leitor da lista); não abre o painel |
+| `Testar.ps1` | Autoteste das funções (datas, calendário, leitor da lista, segurança); não abre o painel |
+| `SECURITY.md` | O que o painel protege, o que não protege e como avisar sobre problemas |
+| `CHANGELOG.md` | O que mudou em cada versão |
+| `LICENSE` | Licença MIT |
 | `FilaChamados.ico` | Ícone |
 | `webview2/` | DLLs do SDK do Microsoft WebView2 (versão 1.0.4191.47), com a licença da Microsoft |
 | `docs/` | Imagens desta página |
@@ -273,4 +303,26 @@ Limitações conhecidas:
 
 - O leitor depende da estrutura da página "Minha responsabilidade" da Extranet. Se ela mudar, o painel mostra a última leitura até o leitor ser ajustado.
 - O Gantt só conta os dias em que uma leitura viu o chamado "em execução". Execuções curtas entre duas leituras, ou com o painel fechado, ficam de fora.
-- As colunas "Status final" e "Responsável atual" do `historico.csv` ficam em branco: o painel registra quando o chamado saiu da fila, mas não consulta o chamado depois disso.
+- As colunas "Status final" e "Responsável atual" da planilha do histórico ficam em branco: o painel registra quando o chamado saiu da fila, mas não consulta o chamado depois disso.
+
+### Como lançar uma versão
+
+O projeto usa [versionamento semântico](https://semver.org/lang/pt-BR/): `MAIOR.MENOR.CORREÇÃO`. Veja no [CHANGELOG](CHANGELOG.md) quando subir cada número.
+
+1. Atualize `$Versao` no começo do `FilaChamados.ps1`.
+2. Registre as mudanças no `CHANGELOG.md`, numa seção nova com a versão e a data.
+3. Rode o `Testar.ps1` no Windows e confira se termina com `OK`.
+4. Faça o commit e crie a tag: `git tag -a vX.Y.Z -m "Versão X.Y.Z"`.
+5. Envie o commit e a tag: `git push origin main vX.Y.Z`.
+6. Gere o ZIP e publique a release:
+
+   ```
+   git archive --prefix=fila-chamados/ -o fila-chamados.zip vX.Y.Z
+   gh release create vX.Y.Z fila-chamados.zip --title "vX.Y.Z" --notes "Veja o CHANGELOG.md"
+   ```
+
+   O ZIP precisa se chamar `fila-chamados.zip` para o link de download do README continuar funcionando.
+
+## Licença
+
+Código aberto sob a [licença MIT](LICENSE). As DLLs da pasta `webview2/` são da Microsoft e seguem a licença dela, em [`webview2/LICENSE.txt`](webview2/LICENSE.txt).
