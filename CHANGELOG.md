@@ -10,6 +10,8 @@ O projeto segue o [versionamento semântico](https://semver.org/lang/pt-BR/) (`M
 
 ## [Não lançado]
 
+## [1.1.0] - 2026-10-10
+
 ### Corrigido
 
 - Fila com mais de 20 chamados: o painel lia só a primeira página da Extranet e recusava a leitura ("a página trouxe 20 de 26 chamados"). Agora percorre todas as páginas. O mecanismo de paginação da Extranet (AJAX) foi identificado por José Ramos.
@@ -30,6 +32,7 @@ O projeto segue o [versionamento semântico](https://semver.org/lang/pt-BR/) (`M
 - Dependabot para manter as ações dos workflows atualizadas.
 - Guia de contribuição ([CONTRIBUTING.md](CONTRIBUTING.md)).
 - Aviso privado de vulnerabilidades pelo GitHub, com prazo de resposta, no [SECURITY.md](SECURITY.md).
+- README com a segurança em destaque: resumo no topo, como conferir o SHA-256 do ZIP, tabela do que está protegido e os cuidados de quem usa.
 
 ## [1.0.0] - 2026-10-10
 

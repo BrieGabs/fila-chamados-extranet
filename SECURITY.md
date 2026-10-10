@@ -11,7 +11,8 @@ Este documento detalha o que o painel protege, os cuidados que dependem de quem 
 
 | Versão | Suporte |
 |---|---|
-| 1.0.x | ✅ Recebe correções de segurança |
+| 1.1.x | ✅ Recebe correções de segurança |
+| 1.0.x | ❌ Atualize para a 1.1 |
 
 A versão instalada aparece no menu do botão direito do painel ("mininet vX.Y.Z").
 

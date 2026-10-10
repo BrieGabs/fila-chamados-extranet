@@ -11,7 +11,7 @@
 # Clique num chamado para abrir no navegador. Botao direito: mais opcoes.
 
 $ErrorActionPreference = 'Stop'
-$Versao = '1.0.0'   # versionamento semantico; mudou aqui, atualize o CHANGELOG.md e crie a tag vX.Y.Z
+$Versao = '1.1.0'   # versionamento semantico; mudou aqui, atualize o CHANGELOG.md e crie a tag vX.Y.Z
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
 $ScriptPath    = $MyInvocation.MyCommand.Path
