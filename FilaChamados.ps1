@@ -175,7 +175,7 @@ function Update-Entradas($entradas, $prev, $atual, [string]$stamp) {
     $codPrev = @($prev | ForEach-Object { [string]$_.codigo })
     $codAtual = @($atual | ForEach-Object { [string]$_.codigo })
     $saidas = @{}
-    foreach ($k in @($entradas.PSObject.Properties.Name)) {
+    foreach ($k in @($entradas.PSObject.Properties | ForEach-Object { $_.Name })) {
         if ($codAtual -notcontains $k) { $saidas[$k] = $entradas.$k; $entradas.PSObject.Properties.Remove($k) }
     }
     if ($codPrev.Count) {
