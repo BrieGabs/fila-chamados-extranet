@@ -60,6 +60,28 @@ Confere ($per.Count -eq 2) "gantt: so chamados com dia em execucao (veio $($per.
 Confere ($per[0].item.codigo -eq '1' -and $per[0].trechos.Count -eq 2 -and $per[0].trechos[0].ini -eq [datetime]'2026-09-08' -and $per[0].trechos[0].fim -eq [datetime]'2026-09-09' -and $per[0].trechos[1].ini -eq [datetime]'2026-09-11') 'gantt: dias seguidos viram um trecho'
 Confere ($per[1].item.codigo -eq '3' -and $per[1].trechos[0].ini -eq [datetime]'2026-09-24') 'gantt: chamado do historico tambem entra'
 
+# ---------------------------------------------------------------- entrada na fila
+$c1 = [pscustomobject]@{ codigo = '1' }; $c2 = [pscustomobject]@{ codigo = '2' }
+$ent = New-Object psobject
+$saiu = Update-Entradas $ent @() @($c1) '2026-09-01T12:00:00.000Z'
+Confere (@($ent.PSObject.Properties).Count -eq 0 -and $saiu.Count -eq 0) 'entrada: primeira leitura nao inventa data'
+$saiu = Update-Entradas $ent @($c1) @($c1, $c2) '2026-09-10T12:00:00.000Z'
+Confere ($ent.'2' -eq '2026-09-10T12:00:00.000Z' -and $null -eq $ent.'1') 'entrada: chamado novo ganha a leitura que o viu'
+$saiu = Update-Entradas $ent @($c1, $c2) @($c1, $c2) '2026-09-11T12:00:00.000Z'
+Confere ($ent.'2' -eq '2026-09-10T12:00:00.000Z') 'entrada: leitura seguinte nao muda a data'
+$saiu = Update-Entradas $ent @($c1, $c2) @($c1) '2026-09-12T12:00:00.000Z'
+Confere ($saiu['2'] -eq '2026-09-10T12:00:00.000Z' -and $null -eq $ent.'2') 'entrada: quem sai leva a data e sai das entradas'
+$HistFile = Join-Path $env:TEMP 'FilaChamadosTeste-historico.json'
+Remove-Item -LiteralPath $HistFile -ErrorAction SilentlyContinue
+Update-Historico @($c1, $c2) @($c1) @() '2026-09-12T12:00:00.000Z' $saiu
+$h = @(Get-Historico)
+Confere ($h.Count -eq 1 -and $h[0].codigo -eq '2' -and $h[0].entrouEm -eq '2026-09-10T12:00:00.000Z') 'entrada: historico guarda quando entrou'
+Remove-Item -LiteralPath $HistFile
+Add-Member -InputObject $ent -MemberType NoteProperty -Name '1' -Value '2026-09-10T12:00:00.000Z'
+$ev = @(Get-EventosCalendario $fila @([pscustomobject]@{ codigo = '3'; criacao = '08/09/2026'; entrouEm = '2026-09-15T12:00:00.000Z'; saiuEm = '2026-09-24T17:55:00.000Z' }) $ent)
+Confere (@($ev | Where-Object { $_.evento -eq 'chegou' -and $_.item.codigo -eq '1' -and $_.dia -eq (Get-DataLocal '2026-09-10T12:00:00.000Z').Date }).Count -eq 1) 'calendario: chegou pela entrada na fila'
+Confere (@($ev | Where-Object { $_.evento -eq 'chegou' -and $_.item.codigo -eq '3' -and $_.dia -eq (Get-DataLocal '2026-09-15T12:00:00.000Z').Date }).Count -eq 1) 'calendario: historico chegou pela entrada na fila'
+
 # ---------------------------------------------------------------- extranet
 # Copia simplificada da lista "Minha responsabilidade" (mesmos ids da pagina real)
 $pagina = @'

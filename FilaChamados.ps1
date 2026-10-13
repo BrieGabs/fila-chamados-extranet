@@ -86,7 +86,7 @@ function Set-Extranet([string]$lista) {
 
 $state = Read-Json $StateFile
 if (-not $state) { $state = New-Object psobject }
-foreach ($p in @('left', 'top', 'recolhido', 'modo', 'ultimoAtualizadoEm', 'ultimos', 'ultimosCodigos', 'codigosBase', 'extranet', 'filtroStatus')) {
+foreach ($p in @('left', 'top', 'recolhido', 'modo', 'ultimoAtualizadoEm', 'ultimos', 'ultimosCodigos', 'codigosBase', 'extranet', 'filtroStatus', 'entradas')) {
     if ($state.PSObject.Properties.Name -notcontains $p) { $state | Add-Member -NotePropertyName $p -NotePropertyValue $null }
 }
 Set-Extranet ([string]$state.extranet)
@@ -127,6 +127,7 @@ function Save-Historico($list) {
 function Export-HistoricoCsv($arr, [string]$path) {
     $arr | Select-Object `
             @{ n = 'Código'; e = { Get-TextoCsv $_.codigo } },
+            @{ n = 'Entrou na minha fila'; e = { $d = Get-DataLocal $_.entrouEm; if ($d) { $d.ToString('dd/MM/yyyy') } else { '' } } },
             @{ n = 'Fora da fila desde'; e = { $d = Get-DataLocal $_.saiuEm; if ($d) { $d.ToString('dd/MM/yyyy') } else { '' } } },
             @{ n = 'Status final'; e = { Get-TextoCsv $_.statusFinal } },
             @{ n = 'Responsável atual'; e = { Get-TextoCsv $_.responsavelAtual } },
@@ -167,8 +168,34 @@ function Remove-PlanilhaHistorico {
     foreach ($p in @($HistCsv, $HistCsvAntigo)) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
 }
 
-# prev = fila anterior, atual = fila nova, saidosData = saidos com status final (vindos da verificacao)
-function Update-Historico($prev, $atual, $saidosData, [string]$stamp) {
+# why: a Extranet nao informa quando o chamado entrou na sua fila; vale a primeira leitura que o viu nela.
+# Sem leitura anterior (primeiro uso, ou chamado que ja estava na fila antes da versao 1.2.0) fica sem data.
+# entradas = codigo -> stamp, so dos chamados na fila; devolve as entradas dos que sairam (vao para o historico)
+function Update-Entradas($entradas, $prev, $atual, [string]$stamp) {
+    $codPrev = @($prev | ForEach-Object { [string]$_.codigo })
+    $codAtual = @($atual | ForEach-Object { [string]$_.codigo })
+    $saidas = @{}
+    foreach ($k in @($entradas.PSObject.Properties | ForEach-Object { $_.Name })) {
+        if ($codAtual -notcontains $k) { $saidas[$k] = $entradas.$k; $entradas.PSObject.Properties.Remove($k) }
+    }
+    if ($codPrev.Count) {
+        foreach ($k in $codAtual) {
+            if ($codPrev -notcontains $k -and -not $entradas.PSObject.Properties[$k]) { Add-Member -InputObject $entradas -MemberType NoteProperty -Name $k -Value $stamp }
+        }
+    }
+    return $saidas
+}
+
+# dia em que o chamado entrou na sua fila; $null quando o painel nao viu a chegada
+function Get-EntradaFila($c, $entradas) {
+    if ($c.entrouEm) { return Get-DataLocal $c.entrouEm }
+    if ($entradas) { return Get-DataLocal $entradas.([string]$c.codigo) }
+    return $null
+}
+
+# prev = fila anterior, atual = fila nova, saidosData = saidos com status final (vindos da verificacao),
+# entrouEm = codigo -> quando entrou na fila (Update-Entradas)
+function Update-Historico($prev, $atual, $saidosData, [string]$stamp, $entrouEm) {
     $hist = Get-Historico
     $codAtual = @($atual | ForEach-Object { [string]$_.codigo })
     $mudou = $false
@@ -189,8 +216,11 @@ function Update-Historico($prev, $atual, $saidosData, [string]$stamp) {
         for ($i = $hist.Count - 1; $i -ge 0; $i--) { if ([string]$hist[$i].codigo -eq $k) { $hist.RemoveAt($i) } }
         $url = [string]$det.url
         if (-not $url) { $url = $ChamadoUrl + $k }
+        $ent = ''
+        if ($entrouEm -and $entrouEm.ContainsKey($k)) { $ent = [string]$entrouEm[$k] }
         [void]$hist.Add([pscustomobject][ordered]@{
                 codigo           = $k
+                entrouEm         = $ent
                 saiuEm           = $stamp
                 statusFinal      = [string]$s.statusFinal
                 responsavelAtual = [string]$s.responsavelAtual
@@ -237,7 +267,9 @@ function Process-Data($data, $ch) {
     if ($stamp -ne (Get-Stamp $state.ultimoAtualizadoEm)) {
         $prev = @($state.ultimos | Where-Object { $_ })
         if ($prev.Count -eq 0) { $prev = @($state.ultimosCodigos | Where-Object { $_ } | ForEach-Object { [pscustomobject]@{ codigo = [string]$_ } }) }
-        Update-Historico $prev $ch @($data.saidos | Where-Object { $_ }) $stamp
+        if ($null -eq $state.entradas) { $state.entradas = New-Object psobject }
+        $entrouEm = Update-Entradas $state.entradas $prev $ch $stamp
+        Update-Historico $prev $ch @($data.saidos | Where-Object { $_ }) $stamp $entrouEm
         # base do "NOVO" = fila do fim do dia anterior (a busca roda varias vezes por dia)
         $antes = Get-DataLocal $state.ultimoAtualizadoEm
         $agora = Get-DataLocal $data.atualizadoEm
@@ -813,7 +845,10 @@ function New-Row($c, [bool]$novo) {
     $tip = "$($c.codigo) - $($c.titulo)`n$($c.cliente)`n$($c.categoria)"
     if ($c.versao) { $tip += "`nVersão: $($c.versao)" }
     if ($c.dataPrevista) { $tip += "`nPrevisto para $($c.dataPrevista)" }
-    $row = New-RowBorder $c "$tip`nCriado em $($c.criacao)`nClique para abrir na Extranet"
+    $tip += "`nCriado em $($c.criacao)"
+    $ent = Get-EntradaFila $c $state.entradas
+    if ($ent) { $tip += "`nNa sua fila desde $($ent.ToString('dd/MM/yyyy'))" }
+    $row = New-RowBorder $c "$tip`nClique para abrir na Extranet"
     $sp = New-Object System.Windows.Controls.StackPanel
     $tags = @((New-TipoTag ([string]$c.tipo)))
     if ($c.emExecucao) { $tags += (New-Tag 'em execução' '#3322C55E' '#FF86EFAC') }
@@ -842,6 +877,8 @@ function New-Row($c, [bool]$novo) {
 function New-HistRow($e) {
     $tip = "$($e.codigo) - $($e.titulo)`n$($e.cliente)`nStatus final: $($e.statusFinal)`nResponsável atual: $($e.responsavelAtual)"
     if ($e.ultimoStatus) { $tip += "`nÚltimo status na sua fila: $($e.ultimoStatus)" }
+    $ent = Get-EntradaFila $e $null
+    if ($ent) { $tip += "`nEntrou na sua fila em $($ent.ToString('dd/MM/yyyy'))" }
     $row = New-RowBorder $e "$tip`nClique para abrir na Extranet"
     $sp = New-Object System.Windows.Controls.StackPanel
     $d = Get-DataLocal $e.saiuEm
@@ -978,10 +1015,11 @@ $script:calTipo = ''      # '' = todos os tipos
 $script:calDia  = $null
 $script:calVista = 'calendario'   # ou 'gantt'
 
-# why: o painel nao guarda o dia em que o chamado entrou na fila, entao "chegou" usa a data de criacao
-function Get-EventosCalendario($ch, $hist) {
+# why: "chegou" e o dia em que o chamado entrou na sua fila; sem esse dia (Update-Entradas), usa a data de criacao
+function Get-EventosCalendario($ch, $hist, $entradas) {
     foreach ($c in @(@($ch) + @($hist) | Where-Object { $_ })) {
-        $d = Get-DataBr ([string]$c.criacao)
+        $d = Get-EntradaFila $c $entradas
+        if (-not $d) { $d = Get-DataBr ([string]$c.criacao) }
         if ($d) { [pscustomobject]@{ dia = $d.Date; evento = 'chegou'; item = $c } }
     }
     foreach ($e in @($hist | Where-Object { $_ })) {
@@ -1089,7 +1127,7 @@ function Draw-Calendario($ch) {
     $List.Children.Clear()
     $ini = $script:calMes
     $fim = $ini.AddMonths(1)
-    $ev = @(Get-EventosCalendario $ch (Get-Historico) | Where-Object {
+    $ev = @(Get-EventosCalendario $ch (Get-Historico) $state.entradas | Where-Object {
             $_.dia -ge $ini -and $_.dia -lt $fim -and (-not $script:calTipo -or [string]$_.item.tipo -eq $script:calTipo)
         })
     $porDia = @{}
@@ -1149,7 +1187,7 @@ function Draw-Calendario($ch) {
         $run.Foreground = $p[1]
         [void]$res.Inlines.Add($run)
     }
-    $res.ToolTip = "Chegou = data de criação do chamado. Entregue = dia em que saiu da sua fila.`nSaldo positivo: a fila cresceu no mês."
+    $res.ToolTip = "Chegou = dia em que entrou na sua fila (ou a data de criação, se o painel não viu a chegada). Entregue = dia em que saiu da sua fila.`nSaldo positivo: a fila cresceu no mês."
     [void]$List.Children.Add($res)
 
     # filtro por tipo
@@ -1227,7 +1265,7 @@ function Draw-Calendario($ch) {
     $v = $porDia[$sel.Day]
     if (-not $v) { [void]$List.Children.Add((New-Vazio "Nada em $($sel.ToString('dd/MM')).")); return }
     if ($v.chegou.Count) {
-        [void]$List.Children.Add((New-Secao "Chegaram em $($sel.ToString('dd/MM')) · $($v.chegou.Count)" 'Pela data de criação do chamado'))
+        [void]$List.Children.Add((New-Secao "Chegaram em $($sel.ToString('dd/MM')) · $($v.chegou.Count)" 'Dia em que entraram na sua fila (ou a criação, se o painel não viu a chegada)'))
         foreach ($c in $v.chegou) { if ($c.saiuEm) { [void]$List.Children.Add((New-HistRow $c)) } else { [void]$List.Children.Add((New-Row $c $false)) } }
     }
     if ($v.entregue.Count) {
