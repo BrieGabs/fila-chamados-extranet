@@ -173,7 +173,7 @@ Cada chamado mostra o código, as etiquetas, o título, o cliente e o status atu
 
 ### Histórico
 
-Quando um chamado sai da sua fila, ele passa para o histórico, com o dia em que saiu e o último status que tinha com você.
+Quando um chamado sai da sua fila, ele passa para o histórico, com o dia em que entrou, o dia em que saiu e o último status que tinha com você.
 
 <p align="center">
   <img src="docs/historico.png" width="414" alt="Tela de histórico com quatro chamados que saíram da fila">
@@ -191,7 +191,7 @@ Para ver o histórico no Excel, clique com o botão direito no painel e escolha 
 
 **Calendário** mostra o movimento de cada dia do mês.
 
-- Barra **azul**: chamados que chegaram (pela data de criação).
+- Barra **azul**: chamados que chegaram (o dia em que entraram na sua fila). Para os que já estavam na fila quando o painel começou a anotar a entrada, vale a data de criação do chamado.
 - Barra **verde**: chamados entregues (o dia em que saíram da sua fila).
 - Clique em um dia para ver quais foram. Clique no nome do mês para voltar ao mês atual.
 
@@ -379,6 +379,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Testar.ps1
 Limitações conhecidas:
 
 - O leitor depende da estrutura da página "Minha responsabilidade" da Extranet. Se ela mudar, o painel mostra a última leitura até o leitor ser ajustado.
+- O dia em que o chamado entrou na sua fila é o da primeira leitura que o viu nela. Se o painel ficou fechado, vale o dia em que ele voltou a ler a fila.
 - O Gantt só conta os dias em que uma leitura viu o chamado "em execução". Execuções curtas entre duas leituras, ou com o painel fechado, ficam de fora.
 - As colunas "Status final" e "Responsável atual" da planilha do histórico ficam em branco: o painel registra quando o chamado saiu da fila, mas não consulta o chamado depois disso.
 

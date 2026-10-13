@@ -10,6 +10,11 @@ O projeto segue o [versionamento semântico](https://semver.org/lang/pt-BR/) (`M
 
 ## [Não lançado]
 
+### Adicionado
+
+- O painel anota o dia em que cada chamado entrou na sua fila. O calendário passa a contar a chegada por esse dia, e não mais pela data de criação do chamado. A data aparece ao passar o mouse sobre o chamado, na fila e no histórico, e na coluna "Entrou na minha fila" da planilha do Excel.
+- Chamados que já estavam na fila antes desta versão continuam pela data de criação, porque o painel não viu quando eles chegaram.
+
 ### Segurança
 
 - O ZIP de cada release passa a ser gerado pelo GitHub a partir do código da tag e assinado com Sigstore, com o registro da procedência (`fila-chamados.zip.sigstore.json`). Para lançar uma versão, basta enviar a tag.
