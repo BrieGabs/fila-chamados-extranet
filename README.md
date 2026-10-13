@@ -68,6 +68,13 @@ Não é preciso instalar nenhum programa. O painel usa o PowerShell e o WebView2
 
 O link sempre baixa a última versão publicada. As versões anteriores e o que mudou em cada uma estão em [Releases](https://github.com/BrieGabs/fila-chamados-extranet/releases) e no [CHANGELOG](CHANGELOG.md).
 
+#### Versões disponíveis
+
+| Versão | Data | Destaques | Assinada | SHA-256 do ZIP |
+|---|---|---|---|---|
+| [**v1.1.0**](https://github.com/BrieGabs/fila-chamados-extranet/releases/tag/v1.1.0) (mais recente) | 10/10/2026 | Lê filas com mais de 20 chamados, filtro por status e andamento da leitura. O projeto passa a se chamar mininet. | Sim | `b4d54f9adacdf054d9d96a9b8daf06f0fdeaf1b523b9172f5cc1684cf0aa824a` |
+| [v1.0.0](https://github.com/BrieGabs/fila-chamados-extranet/releases/tag/v1.0.0) | 10/10/2026 | Primeira versão segura: endereço da Extranet e dados locais cifrados, navegador restrito à Extranet. | Não | `e002a491fa285fad2dcb42612e8005592da3838525593922b2ca0ba690e71070` |
+
 > [!WARNING]
 > **Baixe só por aqui.** O script não é assinado digitalmente e roda com `-ExecutionPolicy Bypass`. Não use cópias recebidas por e-mail, chat, pendrive ou pasta compartilhada: elas podem ter sido alteradas.
 
@@ -400,6 +407,8 @@ O `main` é protegido: a versão entra por pull request, como qualquer outra mud
    ```
 
 6. Pronto: o workflow **Release** confere se `$Versao` e o `CHANGELOG.md` batem com a tag, gera o `fila-chamados.zip` a partir do código da tag, assina com Sigstore e publica a release com as notas do CHANGELOG, o SHA-256 e a assinatura (`fila-chamados.zip.sigstore.json`). Acompanhe em [Actions](https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/release.yml).
+
+7. Com a release publicada, acrescente a versão nova no topo da tabela [Versões disponíveis](#versões-disponíveis), com o SHA-256 da página da release, e mande por pull request.
 
 Para publicar de novo uma versão já lançada (por exemplo, se o workflow falhou), rode o **Release** manualmente em Actions, informando a tag.
 
