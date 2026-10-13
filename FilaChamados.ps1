@@ -180,7 +180,7 @@ function Update-Entradas($entradas, $prev, $atual, [string]$stamp) {
     }
     if ($codPrev.Count) {
         foreach ($k in $codAtual) {
-            if ($codPrev -notcontains $k -and -not $entradas.PSObject.Properties[$k]) { Add-Member -InputObject $entradas -NotePropertyName $k -NotePropertyValue $stamp }
+            if ($codPrev -notcontains $k -and -not $entradas.PSObject.Properties[$k]) { Add-Member -InputObject $entradas -MemberType NoteProperty -Name $k -Value $stamp }
         }
     }
     return $saidas

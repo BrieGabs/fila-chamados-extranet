@@ -77,7 +77,7 @@ Update-Historico @($c1, $c2) @($c1) @() '2026-09-12T12:00:00.000Z' $saiu
 $h = @(Get-Historico)
 Confere ($h.Count -eq 1 -and $h[0].codigo -eq '2' -and $h[0].entrouEm -eq '2026-09-10T12:00:00.000Z') 'entrada: historico guarda quando entrou'
 Remove-Item -LiteralPath $HistFile
-Add-Member -InputObject $ent -NotePropertyName '1' -NotePropertyValue '2026-09-10T12:00:00.000Z'
+Add-Member -InputObject $ent -MemberType NoteProperty -Name '1' -Value '2026-09-10T12:00:00.000Z'
 $ev = @(Get-EventosCalendario $fila @([pscustomobject]@{ codigo = '3'; criacao = '08/09/2026'; entrouEm = '2026-09-15T12:00:00.000Z'; saiuEm = '2026-09-24T17:55:00.000Z' }) $ent)
 Confere (@($ev | Where-Object { $_.evento -eq 'chegou' -and $_.item.codigo -eq '1' -and $_.dia -eq (Get-DataLocal '2026-09-10T12:00:00.000Z').Date }).Count -eq 1) 'calendario: chegou pela entrada na fila'
 Confere (@($ev | Where-Object { $_.evento -eq 'chegou' -and $_.item.codigo -eq '3' -and $_.dia -eq (Get-DataLocal '2026-09-15T12:00:00.000Z').Date }).Count -eq 1) 'calendario: historico chegou pela entrada na fila'
