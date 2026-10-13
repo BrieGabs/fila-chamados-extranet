@@ -16,6 +16,16 @@ O projeto segue o [versionamento semântico](https://semver.org/lang/pt-BR/) (`M
 - O resultado da análise de segurança (PSScriptAnalyzer) vai para a aba Security do repositório (Code Scanning).
 - O branch `main` passou a ser protegido: mudanças só entram por pull request, com os testes e a análise de segurança aprovados.
 
+### Alterado
+
+- Calendário: "chegou" passa a ser o dia em que você resgatou o chamado ou em que ele foi delegado para você, lido nas interações do chamado. Sem essa interação, continua valendo a data de criação.
+- A cada leitura, o painel abre também a página de cada chamado da fila, uma de cada vez e por até 45 segundos, para ler as horas e as interações.
+
+### Adicionado
+
+- Horas DEV estimadas e realizadas de cada chamado, na fila, no histórico e na planilha do histórico. O realizado fica em vermelho quando passa do estimado.
+- Relatório de horas acima do estimado, no menu do botão direito: chamados com horas realizadas maiores que as estimadas que passaram por "Aguardando Homologação" no período escolhido, em PDF. O PDF é temporário como a planilha do histórico e é impresso por um navegador à parte, sem a sessão da Extranet e sem JavaScript.
+
 ## [1.1.0] - 2026-10-10
 
 ### Corrigido

@@ -5,6 +5,8 @@
 # salva. Quando um chamado sai da fila, ele
 # vai para o historico (historico.json; a planilha para o Excel e gerada so quando e aberta).
 # Os dias em que a leitura ve um chamado "em execucao" ficam em execucao.json (Gantt).
+# As horas DEV estimadas e realizadas vem da pagina de cada chamado (Chamado.aspx), na fila e no historico.
+# Botao direito, "Relatorio de horas acima do estimado": PDF dos chamados que passaram por Aguardando Homologacao no periodo.
 # So mostra chamados que passaram pela sua fila.
 # Os .json de dados ficam cifrados com a conta do Windows (DPAPI).
 # O endereco da Extranet e pedido no primeiro Recarregar e fica no estado.json (cifrado); nao vem no codigo.
@@ -21,6 +23,8 @@ $StateFile     = Join-Path $Dir 'estado.json'
 $HistFile      = Join-Path $Dir 'historico.json'
 $HistCsv       = Join-Path $env:LOCALAPPDATA 'FilaChamados\historico.csv'   # temporaria: so existe enquanto o Excel usa
 $HistCsvAntigo = Join-Path $Dir 'historico.csv'
+$RelDir        = Join-Path $env:LOCALAPPDATA 'FilaChamados'                      # PDFs do relatorio de horas: temporarios como a planilha
+$RelPerfil     = Join-Path $env:LOCALAPPDATA 'FilaChamados\WebView2-relatorio'   # navegador que so imprime o relatorio, sem a sessao da Extranet
 $ExecFile      = Join-Path $Dir 'execucao.json'
 $WebDir        = Join-Path $Dir 'webview2'
 $WebPerfil     = Join-Path $env:LOCALAPPDATA 'FilaChamados\WebView2'
@@ -86,7 +90,7 @@ function Set-Extranet([string]$lista) {
 
 $state = Read-Json $StateFile
 if (-not $state) { $state = New-Object psobject }
-foreach ($p in @('left', 'top', 'recolhido', 'modo', 'ultimoAtualizadoEm', 'ultimos', 'ultimosCodigos', 'codigosBase', 'extranet', 'filtroStatus')) {
+foreach ($p in @('left', 'top', 'recolhido', 'modo', 'ultimoAtualizadoEm', 'ultimos', 'ultimosCodigos', 'codigosBase', 'extranet', 'filtroStatus', 'usuario')) {
     if ($state.PSObject.Properties.Name -notcontains $p) { $state | Add-Member -NotePropertyName $p -NotePropertyValue $null }
 }
 Set-Extranet ([string]$state.extranet)
@@ -136,6 +140,8 @@ function Export-HistoricoCsv($arr, [string]$path) {
             @{ n = 'Título'; e = { Get-TextoCsv $_.titulo } },
             @{ n = 'Criado em'; e = { Get-TextoCsv $_.criacao } },
             @{ n = 'Dias em aberto'; e = { $_.diasAberto } },
+            @{ n = 'Horas DEV estimadas'; e = { Get-TextoCsv $_.horasEstimadas } },
+            @{ n = 'Horas DEV realizadas'; e = { Get-TextoCsv $_.horasRealizadas } },
             @{ n = 'Link'; e = { $_.url } } |
             Export-Csv -LiteralPath $path -NoTypeInformation -Delimiter ';' -Encoding UTF8
 }
@@ -189,6 +195,8 @@ function Update-Historico($prev, $atual, $saidosData, [string]$stamp) {
         for ($i = $hist.Count - 1; $i -ge 0; $i--) { if ([string]$hist[$i].codigo -eq $k) { $hist.RemoveAt($i) } }
         $url = [string]$det.url
         if (-not $url) { $url = $ChamadoUrl + $k }
+        $horas = $s
+        if (-not $s.horasEstimadas -and -not $s.horasRealizadas) { $horas = $det }   # sem leitura das horas na saida: vale a ultima feita na fila
         [void]$hist.Add([pscustomobject][ordered]@{
                 codigo           = $k
                 saiuEm           = $stamp
@@ -200,9 +208,45 @@ function Update-Historico($prev, $atual, $saidosData, [string]$stamp) {
                 titulo           = [string]$det.titulo
                 categoria        = [string]$det.categoria
                 criacao          = [string]$det.criacao
+                chegou           = [string]$det.chegou
                 diasAberto       = [int]$det.diasAberto
+                horasEstimadas   = [string]$horas.horasEstimadas
+                horasRealizadas  = [string]$horas.horasRealizadas
                 url              = $url
             })
+        $mudou = $true
+    }
+    if ($mudou) { Save-Historico $hist }
+}
+
+# Dia em que o chamado veio para a responsabilidade de $nome: a primeira interacao de resgate ("Resgatou chamado para sua
+# responsabilidade!") feita por ele, ou de delegacao para ele. Sem nenhuma, devolve '' e o calendario usa a data de criacao.
+# why: a primeira e nao a ultima, porque o chamado costuma voltar so para o repasse depois da homologacao, no mesmo dia em que sai
+# why: a lista escreve o nome curto ("FULANO TAL (EQUIPE 1)") e as interacoes o nome inteiro; valem as palavras do curto, na ordem
+function Get-Chegou($pagina, [string]$nome) {
+    $p = @(($nome -replace '\(.*?\)', '') -split '\s+' | Where-Object { $_ })
+    if ($p.Count -eq 0) { return '' }
+    $re = '^\s*' + (@($p | ForEach-Object { [regex]::Escape($_) }) -join '\s(.*\s)?') + '(\s|$)'
+    $t = @($pagina.transferencias | Where-Object { $_ -and [string]$_.para -match $re }) | Select-Object -First 1
+    if ($t) { return [string]$t.dia }
+    return ''
+}
+
+# As horas e o dia da chegada lidos agora na pagina do chamado valem tambem para quem ja esta no historico (inclusive quem saiu
+# antes de o painel ler isso). horasLidasEm marca a entrada como lida: o leitor so volta a ela quando um relatorio de horas pede o historico inteiro
+function Update-HorasHistorico($paginas) {
+    $pag = @{}
+    foreach ($p in @($paginas | Where-Object { $_ })) { $pag[[string]$p.codigo] = $p }
+    $hist = Get-Historico
+    $mudou = $false
+    foreach ($e in $hist) {
+        $p = $pag[[string]$e.codigo]
+        if (-not $p) { continue }
+        $e | Add-Member -NotePropertyName horasEstimadas -NotePropertyValue ([string]$p.horasEstimadas) -Force
+        $e | Add-Member -NotePropertyName horasRealizadas -NotePropertyValue ([string]$p.horasRealizadas) -Force
+        $e | Add-Member -NotePropertyName horasLidasEm -NotePropertyValue (Get-Stamp (Get-Date)) -Force
+        # sem saber quem e voce (a fila ainda nao foi lida com chamados), a chegada fica para uma proxima leitura
+        if ($state.usuario) { $e | Add-Member -NotePropertyName chegou -NotePropertyValue (Get-Chegou $p ([string]$state.usuario)) -Force }
         $mudou = $true
     }
     if ($mudou) { Save-Historico $hist }
@@ -260,6 +304,18 @@ function Get-DataBr([string]$s) {
     return $null
 }
 
+# horas da Extranet vem como "2,68"; vazio, zero ou ilegivel devolve $null
+function Get-Horas([string]$s) {
+    $d = 0.0
+    if ([double]::TryParse($s.Trim().Replace(',', '.'), [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$d) -and $d -gt 0) { return $d }
+    return $null
+}
+
+function Get-TextoHoras([string]$s) {
+    if (Get-Horas $s) { return $s.Trim() + ' h' }
+    return '-'
+}
+
 function Get-TipoCategoria([string]$cat) {
     if ($cat -match 'INCID') { return 'Incidência' }
     if ($cat -match 'NOVO REQUISITO') { return 'Novo requisito' }
@@ -273,12 +329,60 @@ function Get-TipoCategoria([string]$cat) {
 # aciona o "proxima" da propria Extranet, espera o fim do AJAX e le de novo, ate juntar o total que a pagina informa.
 # ponytail: depende dos ids do Repeater da Extranet (rptChamados_*, lnkNext); se a pagina mudar, a busca avisa, salva a pagina e nao grava nada
 $ScriptFila = @'
-(() => {
+(async () => {
   // em falha manda a pagina junto, para ajustar o leitor (vira diagnostico-extranet.html)
   const post = o => window.chrome.webview.postMessage(JSON.stringify(o.ok ? o : { ...o, html: document.documentElement.outerHTML }));
   const progresso = (lidos, total) => window.chrome.webview.postMessage(JSON.stringify({ progresso: true, lidos, total }));
   const t = el => (el ? el.textContent : '').replace(/\s+/g, ' ').trim();
   const MAX_PAGINAS = 50, ESPERA_MS = 20000;
+  // ponytail: horas DEV e interacoes so existem na pagina do chamado (Chamado.aspx: campos txtHorasCodes*, Repeater rptInteracoes_*); null = a pagina nao abriu e o painel fica com a leitura anterior
+  const lerChamado = async codigo => {
+    try {
+      const r = await fetch('Chamado.aspx?CODIGO=' + codigo, { credentials: 'same-origin', signal: AbortSignal.timeout(20000) });
+      if (!r.ok) return null;
+      const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+      const campo = n => { const i = doc.getElementById('ContentPlaceHolder1_' + n); return i ? i.value.trim() : ''; };
+      if (campo('hddCodigo') !== codigo) return null;   // login ou pagina de erro no lugar do chamado
+      // interacoes na ordem em que aconteceram: o que foi feito (h4), quem fez e o dia (hddData de mesmo numero)
+      const interacoes = [...doc.querySelectorAll('[id^="ContentPlaceHolder1_rptInteracoes_trInteracao_"]')].map(b => ({
+        acoes: [...b.querySelectorAll('h4')].map(h => t(h)),
+        autor: t(b.querySelector('.int-header b')),
+        dia: (campo('rptInteracoes_hddData_' + b.id.split('_').pop()).match(/\d{2}\/\d{2}\/\d{4}/) || [''])[0]
+      })).filter(i => i.dia);
+      // dias em que alguem pos o chamado em "Aguardando Homologacao"
+      const homologacoes = interacoes.filter(i => i.acoes.some(a => /^Alterou Status para:\s*Aguardando Homologa/i.test(a))).map(i => i.dia);
+      // com quem o chamado ficou a cada troca de responsavel: quem resgatou, ou para quem foi delegado
+      const transferencias = [];
+      for (const i of interacoes) for (const a of i.acoes) {
+        if (/^Resgatou chamado para sua responsabilidade/i.test(a)) transferencias.push({ dia: i.dia, para: i.autor });
+        else if (/^Chamado delegado para:/i.test(a)) transferencias.push({ dia: i.dia, para: a.replace(/^Chamado delegado para:\s*/i, '') });
+      }
+      return { codigo, horasEstimadas: campo('txtHorasCodes'), horasRealizadas: campo('txtHorasCodesRealizada'), homologacoes, transferencias };
+    } catch (e) { return null; }
+  };
+  // Depois da lista: abre a pagina de cada chamado, uma de cada vez - a fila, quem saiu dela desde a leitura anterior
+  // (filaAnteriores) e o historico ainda sem horas (filaHistorico).
+  // hazard: passou de 45 s, o resto fica para a proxima leitura (a busca inteira desiste aos 90 s sem recado)
+  const detalhar = async (chamados, paginas) => {
+    const detalhes = [];   // pagina de cada chamado aberta nesta busca
+    const abrir = async codigo => {
+      if (detalhes.some(p => p.codigo === codigo)) return;
+      const p = await lerChamado(codigo);
+      if (p) detalhes.push(p);
+    };
+    const pedidos = n => (window[n] || []).map(String).filter(k => /^\d+$/.test(k));
+    const limite = Date.now() + 45000;
+    for (const codigo of [...chamados.map(c => c.codigo), ...pedidos('filaAnteriores'), ...pedidos('filaHistorico')]) if (Date.now() < limite) await abrir(codigo);
+    post({ ok: true, chamados, paginas, detalhes });
+    // relatorio de horas: precisa da pagina de todos (filaRelatorio = historico inteiro), sem limite de tempo; avisa o andamento
+    if (!window.filaRelatorio) return;
+    const falta = [...new Set([...chamados.map(c => c.codigo), ...pedidos('filaRelatorio')])].filter(k => !detalhes.some(p => p.codigo === k));
+    for (const [i, codigo] of falta.entries()) {
+      post({ ok: true, andamento: `${i + 1} de ${falta.length}` });
+      await abrir(codigo);
+    }
+    post({ ok: true, relatorio: detalhes });
+  };
   // le a pagina que esta na tela
   const ler = () => {
     const total = (t(document.body).match(/Lista de Chamados \((\d+)\)/) || [])[1];
@@ -300,7 +404,8 @@ $ScriptFila = @'
         categoria: t([...painel.childNodes].find(n => n.nodeType === 3 && n.textContent.trim())),   // texto solto logo abaixo do cliente
         criacao: (t(painel).match(/Cria\S*:\s*(\d{2}\/\d{2}\/\d{4})/) || [])[1] || '',
         emExecucao: oculto('HddEmExecucao') === 'S',
-        prioridade: oculto('hddPrioridade')
+        prioridade: oculto('hddPrioridade'),
+        responsavel: (t(painel).match(/Respons\S*:\s*(.*?)\s*-\s*Cria/) || [])[1] || ''   // voce, do jeito que a lista escreve: "FULANO TAL (EQUIPE 1)"
       };
     });
     if (chamados.some(c => !/^\d+$/.test(c.codigo) || !c.titulo)) return { erro: 'chamado sem código ou título na lista' };
@@ -339,7 +444,7 @@ $ScriptFila = @'
       }
       const chamados = [...todos.values()];
       if (chamados.length !== r.total) return post({ ok: false, erro: `as páginas trouxeram ${chamados.length} de ${r.total} chamados` });
-      post({ ok: true, chamados, paginas });
+      detalhar(chamados, paginas).catch(e => post({ ok: false, erro: 'erro ao abrir as páginas dos chamados: ' + e.message }));
     } catch (e) { post({ ok: false, erro: 'formato da lista mudou: ' + e.message }); }
   };
   passo();
@@ -355,6 +460,9 @@ $script:esperandoLogin = $false
 $script:sessaoOk = $false
 $script:ultimaBusca = [datetime]::MinValue
 $script:avisoBusca = ''
+$script:relatorio = $null      # periodo (@{ ini; fim }) do relatorio de horas pedido, enquanto a busca dele roda
+$script:pdf = $null            # navegador a parte (@{ janela; web; html; arq; tarefa; desde }) enquanto imprime o relatorio em PDF
+$script:pdfRelogio = $null
 
 # link para outro site: clique da pessoa abre no navegador padrao; redirecionamento da pagina e barrado
 function On-NavegacaoIniciada($e) {
@@ -493,6 +601,11 @@ function Start-Busca([string]$modo) {
     $UpdatedText.Text = 'atualizando…'
 }
 
+# "100001,100002" para montar uma lista de codigos no JavaScript do leitor
+function Get-Codigos($lista) {
+    return @($lista | ForEach-Object { [string]$_ } | Where-Object { $_ -match '^\d+$' }) -join ','
+}
+
 function Open-Lista {
     $script:tentativas++
     $script:buscaDesde = Get-Date
@@ -501,6 +614,7 @@ function Open-Lista {
 
 function Stop-Busca([string]$aviso) {
     $script:busca = $null
+    $script:relatorio = $null
     $script:avisoBusca = $aviso
     Hide-Login
     Render
@@ -508,6 +622,7 @@ function Stop-Busca([string]$aviso) {
 
 function On-Navegou($e) {
     if (-not $script:busca) { return }
+
     if (-not $e.IsSuccess) {
         if ([string]$e.WebErrorStatus -eq 'OperationCanceled') { return }   # outra navegacao tomou o lugar
         Stop-Busca "A Extranet não abriu ($($e.WebErrorStatus)): a fila mostra a última leitura."
@@ -520,7 +635,14 @@ function On-Navegou($e) {
         Stop-Busca 'Sessão da Extranet fechada: clique em Recarregar para entrar.'
     } elseif ($url -match 'Chamados\.aspx') {
         Hide-Login
-        [void]$script:web.ExecuteScriptAsync($ScriptFila)
+        # pedidos ao leitor: alem da fila, a pagina de quem estava na leitura anterior (pode ter saido), do historico
+        # ainda sem horas e, no relatorio de horas, do historico inteiro
+        $hist = Get-Historico
+        $pedido = "window.filaAnteriores = [$(Get-Codigos $state.ultimosCodigos)];"
+        $semLeitura = @($hist | Where-Object { -not $_.horasLidasEm -or ($state.usuario -and $_.PSObject.Properties.Name -notcontains 'chegou') })
+        $pedido += " window.filaHistorico = [$(Get-Codigos @($semLeitura | ForEach-Object { $_.codigo }))];"
+        if ($script:relatorio) { $pedido += " window.filaRelatorio = [$(Get-Codigos @($hist | ForEach-Object { $_.codigo }))];" }
+        [void]$script:web.ExecuteScriptAsync("$pedido`n$ScriptFila")
     } elseif ($script:tentativas -lt 3) {
         Hide-Login   # pagina inicial logo depois do login: segue para a fila
         Open-Lista
@@ -541,39 +663,359 @@ function On-Fila([string]$json) {
         Stop-Busca "Não consegui ler a fila na Extranet ($($r.erro)): a fila mostra a última leitura. Cópia da página em diagnostico-extranet.html."
         return
     }
+    # recados do relatorio de horas: andamento (renova o prazo de 90 s) e, no fim, as paginas lidas
+    if ($r.andamento) { $script:buscaDesde = Get-Date; $UpdatedText.Text = "relatório: lendo $($r.andamento)…"; return }
+    if ($r.PSObject.Properties.Name -contains 'relatorio') { Write-Relatorio @($r.relatorio | Where-Object { $_ -and [string]$_.codigo -match '^\d+$' }); return }
     # o codigo vira parte do link que o clique abre: confere de novo aqui, nao so no script da pagina
     if (@($r.chamados | Where-Object { [string]$_.codigo -notmatch '^\d+$' }).Count) {
         Stop-Busca 'Não consegui ler a fila na Extranet (chamado com código inválido): a fila mostra a última leitura.'
         return
     }
     $hoje = (Get-Date).Date
+    $pag = @{}     # pagina de cada chamado que o leitor abriu nesta busca
+    foreach ($p in @($r.detalhes | Where-Object { $_ -and [string]$_.codigo -match '^\d+$' })) { $pag[[string]$p.codigo] = $p }
+    $antes = @{}   # horas e chegada da leitura anterior: continuam valendo quando a pagina do chamado nao abriu agora
+    foreach ($a in @($state.ultimos | Where-Object { $_ })) { $antes[[string]$a.codigo] = $a }
+    # usuario logado = o responsavel de qualquer linha da lista "Minha responsabilidade"; fica guardado para o historico
+    $eu = @($r.chamados | ForEach-Object { [string]$_.responsavel } | Where-Object { $_ }) | Select-Object -First 1
+    if ($eu) { $state.usuario = $eu }
     $ch = @(foreach ($c in @($r.chamados)) {
             $cad = Get-DataBr $c.criacao
             $dias = 0
             if ($cad) { $dias = ($hoje - $cad.Date).Days }
+            $h = $pag[[string]$c.codigo]
+            if ($h) { $chegou = Get-Chegou $h ([string]$c.responsavel) }
+            else { $h = $antes[[string]$c.codigo]; $chegou = [string]$h.chegou }
             [pscustomobject][ordered]@{
-                codigo       = [string]$c.codigo
-                cliente      = $c.cliente
-                status       = $c.status
-                diasStatus   = [int]$c.diasStatus
-                versao       = $c.versao
-                dataPrevista = $c.dataPrevista
-                titulo       = $c.titulo
-                categoria    = $c.categoria
-                tipo         = Get-TipoCategoria $c.categoria
-                criacao      = $c.criacao
-                diasAberto   = $dias
-                emExecucao   = [bool]$c.emExecucao
-                prioridade   = $c.prioridade
-                url          = $ChamadoUrl + $c.codigo
+                codigo          = [string]$c.codigo
+                cliente         = $c.cliente
+                status          = $c.status
+                diasStatus      = [int]$c.diasStatus
+                versao          = $c.versao
+                dataPrevista    = $c.dataPrevista
+                titulo          = $c.titulo
+                categoria       = $c.categoria
+                tipo            = Get-TipoCategoria $c.categoria
+                criacao         = $c.criacao
+                chegou          = $chegou
+                diasAberto      = $dias
+                emExecucao      = [bool]$c.emExecucao
+                prioridade      = $c.prioridade
+                horasEstimadas  = [string]$h.horasEstimadas
+                horasRealizadas = [string]$h.horasRealizadas
+                url             = $ChamadoUrl + $c.codigo
             }
         })
-    $novo = [pscustomobject][ordered]@{ atualizadoEm = Get-Stamp (Get-Date); chamados = $ch }
+    # saidos = horas de quem saiu da fila desde a leitura anterior, lidas agora (vao para o historico junto com o chamado)
+    $naFila = @($ch | ForEach-Object { $_.codigo })
+    $saidos = @($state.ultimosCodigos | ForEach-Object { [string]$_ } | Where-Object { $pag[$_] -and $naFila -notcontains $_ } | ForEach-Object {
+            [pscustomobject][ordered]@{ codigo = $_; horasEstimadas = [string]$pag[$_].horasEstimadas; horasRealizadas = [string]$pag[$_].horasRealizadas }
+        })
+    $novo = [pscustomobject][ordered]@{ atualizadoEm = Get-Stamp (Get-Date); chamados = $ch; saidos = $saidos }
     Write-Json $novo 4 $DataFile
     Remove-Item -LiteralPath $DiagFile -ErrorAction SilentlyContinue   # a copia da pagina tem seus chamados: nao fica depois que o leitor volta a funcionar
+    Update-HorasHistorico @($pag.Values)
     $script:sessaoOk = $true
     $script:ultimaBusca = Get-Date
+    if ($script:relatorio) { $script:buscaDesde = Get-Date; Render; return }   # a busca segue: o leitor ainda manda as paginas do relatorio
     Stop-Busca ''
+}
+
+# ---------------------------------------------------------------- relatorio de horas
+# Entra o chamado com horas DEV realizadas acima das estimadas que teve "Aguardando Homologacao" dentro do periodo.
+# why: chamado sem estimativa (0,00) com horas realizadas tambem entra; a coluna das estimadas mostra o zero
+function Get-LinhasRelatorio($paginas, $det, [datetime]$ini, [datetime]$fim) {
+    foreach ($p in @($paginas | Where-Object { $_ })) {
+        $est = [double](Get-Horas ([string]$p.horasEstimadas))
+        $real = [double](Get-Horas ([string]$p.horasRealizadas))
+        if ($real -le $est) { continue }
+        $datas = @($p.homologacoes | ForEach-Object { Get-DataBr ([string]$_) } | Where-Object { $_ -and $_.Date -ge $ini.Date -and $_.Date -le $fim.Date } | Sort-Object)
+        if ($datas.Count -eq 0) { continue }
+        $k = [string]$p.codigo
+        $d = $det[$k]
+        [pscustomobject][ordered]@{
+            codigo      = $k
+            cliente     = [string]$d.cliente
+            titulo      = [string]$d.titulo
+            tipo        = [string]$d.tipo
+            estimadas   = $est
+            realizadas  = $real
+            acima       = $real - $est
+            homologacao = @($datas | ForEach-Object { $_.ToString('dd/MM/yyyy') } | Select-Object -Unique) -join ', '
+            criacao     = [string]$d.criacao
+            url         = $ChamadoUrl + $k
+        }
+    }
+}
+
+# O relatorio em HTML, de folha clara para imprimir; o navegador do painel transforma em PDF
+function Get-HtmlRelatorio($linhas, [datetime]$ini, [datetime]$fim, [string]$aviso) {
+    $br = [Globalization.CultureInfo]::GetCultureInfo('pt-BR')
+    $e = { param($s) [System.Net.WebUtility]::HtmlEncode([string]$s) }
+    $n = { param($v) ([double]$v).ToString('0.00', $br) }
+    $tr = @($linhas | ForEach-Object {
+            '<tr><td><a href="{0}">{1}</a></td><td>{2}</td><td>{3}</td><td>{4}</td><td class="n">{5}</td><td class="n">{6}</td><td class="n x">+{7}</td><td>{8}</td><td>{9}</td></tr>' -f
+            (& $e $_.url), (& $e $_.codigo), (& $e $_.cliente), (& $e $_.titulo), (& $e $_.tipo), (& $n $_.estimadas), (& $n $_.realizadas), (& $n $_.acima), (& $e $_.homologacao), (& $e $_.criacao)
+        })
+    $soma = { param($p) & $n (@($linhas | ForEach-Object { $_.$p }) | Measure-Object -Sum).Sum }
+    return @"
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório de horas acima do estimado</title><style>
+body { font: 10pt 'Segoe UI', Arial, sans-serif; color: #1f2125; background: #fff; margin: 0; -webkit-print-color-adjust: exact; }
+h1 { font-size: 15pt; margin: 0 0 2pt; }
+.sub { color: #5f6368; margin-bottom: 10pt; }
+.res { display: flex; gap: 8pt; margin-bottom: 10pt; }
+.res div { border: 1px solid #d0d4da; border-radius: 6pt; padding: 5pt 10pt; color: #5f6368; }
+.res b { display: block; font-size: 13pt; color: #1f2125; }
+table { width: 100%; border-collapse: collapse; }
+thead { display: table-header-group; }
+th { background: #1f2125; color: #fff; text-align: left; font-weight: 600; padding: 5pt 6pt; }
+td { padding: 4pt 6pt; border-bottom: 1px solid #e3e6ea; vertical-align: top; }
+tr { break-inside: avoid; }
+.n, td:nth-child(4), td:nth-child(9) { white-space: nowrap; }
+.n { text-align: right; }
+.res b.x, td.x { color: #b91c1c; font-weight: 600; }
+a { color: #1d4ed8; text-decoration: none; }
+.obs { color: #5f6368; font-size: 8.5pt; margin-top: 10pt; }
+</style></head><body>
+<h1>Relatório de horas acima do estimado</h1>
+<div class="sub">Chamados com horas DEV realizadas acima das estimadas que tiveram Aguardando Homologação de $($ini.ToString('dd/MM/yyyy')) a $($fim.ToString('dd/MM/yyyy'))</div>
+<div class="res"><div><b>$(@($linhas).Count)</b>chamados</div><div><b>$(& $soma 'estimadas') h</b>estimadas</div><div><b>$(& $soma 'realizadas') h</b>realizadas</div><div><b class="x">+$(& $soma 'acima') h</b>acima do estimado</div></div>
+<table><thead><tr><th>Código</th><th>Cliente</th><th>Título</th><th>Tipo</th><th class="n">Estimadas</th><th class="n">Realizadas</th><th class="n">Acima</th><th>Aguardando Homologação em</th><th>Criado em</th></tr></thead>
+<tbody>
+$($tr -join "`n")
+</tbody></table>
+<div class="obs">Gerado em $((Get-Date).ToString('dd/MM/yyyy HH:mm')) pelo mininet, com os chamados da fila e do histórico do painel. $(& $e $aviso)</div>
+</body></html>
+"@
+}
+
+# paginas = leitura da pagina de cada chamado (fila + historico) que o leitor conseguiu abrir
+function Write-Relatorio($paginas) {
+    $per = $script:relatorio
+    Update-HorasHistorico $paginas
+    $hist = Get-Historico
+    $det = @{}
+    foreach ($c in @($hist) + @($state.ultimos | Where-Object { $_ })) { $det[[string]$c.codigo] = $c }
+    $lidos = @($paginas | ForEach-Object { [string]$_.codigo })
+    $faltou = @($det.Keys | Where-Object { $lidos -notcontains $_ } | Sort-Object)
+    $aviso = ''
+    if ($faltou.Count) { $aviso = "Relatório sem os chamados que não abriram na Extranet: $($faltou -join ', ')." }
+    $periodo = "$($per.ini.ToString('dd/MM/yyyy')) a $($per.fim.ToString('dd/MM/yyyy'))"
+    $linhas = @(Get-LinhasRelatorio $paginas $det $per.ini $per.fim | Sort-Object acima -Descending)
+    if ($linhas.Count -eq 0) {
+        Stop-Busca ("Relatório de $periodo`: nenhum chamado com horas realizadas acima das estimadas e Aguardando Homologação no período (chamados lidos: $($lidos.Count)). $aviso".Trim())
+        return
+    }
+    $arq = Join-Path $RelDir "relatorio-horas-$($per.ini.ToString('yyyy-MM-dd'))-a-$($per.fim.ToString('yyyy-MM-dd')).pdf"
+    $html = Get-HtmlRelatorio $linhas $per.ini $per.fim $aviso
+    Stop-Busca $aviso   # a leitura da Extranet acabou aqui; o PDF sai em outro navegador
+    try { Start-Pdf $html $arq } catch { Close-Pdf "Não consegui gerar o PDF do relatório: $($_.Exception.Message)" }
+}
+
+# why: o PDF e impresso num navegador a parte, com perfil proprio, sem a sessao da Extranet e sem JavaScript; o navegador da
+# fila continua abrindo so a Extranet. O arquivo e temporario como a planilha do historico: fica em %LOCALAPPDATA%
+# (fora da pasta do painel e do OneDrive) e e apagado quando o painel fecha
+function Start-Pdf([string]$html, [string]$arq) {
+    Close-Pdf ''
+    [void](New-Item -ItemType Directory -Force -Path (Split-Path -Parent $arq))
+    $w = New-Object System.Windows.Window
+    $w.Width = 400; $w.Height = 300
+    $w.Left = -20000; $w.Top = -20000   # fora da tela: so imprime
+    $w.ShowInTaskbar = $false; $w.ShowActivated = $false
+    $wv = New-Object Microsoft.Web.WebView2.Wpf.WebView2
+    $cp = New-Object Microsoft.Web.WebView2.Wpf.CoreWebView2CreationProperties
+    $cp.UserDataFolder = $RelPerfil
+    $wv.CreationProperties = $cp
+    $script:pdf = @{ janela = $w; web = $wv; html = $html; arq = $arq; tarefa = $null; desde = Get-Date }
+    $wv.Add_CoreWebView2InitializationCompleted({
+            param($s, $e)
+            try {
+                if (-not $e.IsSuccess) { Close-Pdf "Não consegui gerar o PDF do relatório: $($e.InitializationException.Message)"; return }
+                $script:pdf.janela.Hide()
+                $s.CoreWebView2.Settings.IsScriptEnabled = $false
+                $s.NavigateToString($script:pdf.html)
+            } catch { Close-Pdf "Não consegui gerar o PDF do relatório: $($_.Exception.Message)" }
+        })
+    $wv.Add_NavigationCompleted({ param($s, $e) try { Save-Pdf $e } catch { Close-Pdf "Não consegui gerar o PDF do relatório: $($_.Exception.Message)" } })
+    $w.Content = $wv
+    $w.Add_ContentRendered({ if ($script:pdf) { [void]$script:pdf.web.EnsureCoreWebView2Async($null) } })
+    # why: a impressao e assincrona e esperar por ela travaria a janela; um relogio confere ate terminar
+    if (-not $script:pdfRelogio) {
+        $script:pdfRelogio = New-Object System.Windows.Threading.DispatcherTimer
+        $script:pdfRelogio.Interval = [timespan]::FromMilliseconds(200)
+        $script:pdfRelogio.Add_Tick({ try { Complete-Pdf } catch { Close-Pdf "Não consegui gerar o PDF do relatório: $($_.Exception.Message)" } })
+    }
+    $script:pdfRelogio.Start()
+    $w.Show()
+}
+
+function Save-Pdf($e) {
+    if (-not $script:pdf -or $script:pdf.tarefa) { return }
+    if (-not $e.IsSuccess) { Close-Pdf "Não consegui montar o relatório ($($e.WebErrorStatus))."; return }
+    $core = $script:pdf.web.CoreWebView2
+    $cfg = $core.Environment.CreatePrintSettings()
+    $cfg.Orientation = 'Landscape'
+    $cfg.PageWidth = 8.27; $cfg.PageHeight = 11.69   # A4, em polegadas
+    $cfg.ShouldPrintBackgrounds = $true
+    $cfg.ShouldPrintHeaderAndFooter = $false
+    $script:pdf.tarefa = $core.PrintToPdfAsync($script:pdf.arq, $cfg)
+}
+
+# Abre o PDF assim que a impressao termina
+function Complete-Pdf {
+    $pdf = $script:pdf
+    if (-not $pdf) { $script:pdfRelogio.Stop(); return }
+    $t = $pdf.tarefa
+    if (-not $t -or -not $t.IsCompleted) {
+        if (((Get-Date) - $pdf.desde).TotalSeconds -ge 60) { Close-Pdf 'O PDF do relatório não ficou pronto em 60 segundos. Gere de novo.' }
+        return
+    }
+    if ($t.IsFaulted -or -not $t.Result) { Close-Pdf 'Não consegui gravar o PDF do relatório. Se ele está aberto, feche e gere de novo.'; return }
+    Close-Pdf ''
+    Start-Process $pdf.arq
+}
+
+# Fecha o navegador do PDF; com $erro, avisa no painel
+function Close-Pdf([string]$erro) {
+    if ($script:pdfRelogio) { $script:pdfRelogio.Stop() }
+    $pdf = $script:pdf
+    $script:pdf = $null
+    if ($pdf) { try { $pdf.web.Dispose(); $pdf.janela.Close() } catch {} }
+    if ($erro) { $script:avisoBusca = $erro; Render }
+}
+
+# os PDFs do relatorio de horas sao temporarios: somem quando o painel fecha (e na abertura seguinte, se um leitor de PDF segurou o arquivo)
+function Remove-RelatoriosPdf {
+    Get-ChildItem -LiteralPath $RelDir -Filter 'relatorio-horas-*.pdf' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+function Start-Relatorio([datetime]$ini, [datetime]$fim) {
+    $script:relatorio = @{ ini = $ini.Date; fim = $fim.Date }
+    if ($script:busca -and -not $script:esperandoLogin) { $script:busca = $null }   # leitura em andamento nao abre o historico: recomeca
+    Start-Busca 'manual'
+    if (-not $script:busca) { $script:relatorio = $null }
+}
+
+$xamlPeriodo = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Relatório de horas" Width="356" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen" FontFamily="Segoe UI" FontSize="12" xml:lang="pt-BR">
+  <Window.Resources>
+    <Style x:Key="Chip" TargetType="Button">
+      <Setter Property="Foreground" Value="#FFD1D5DB"/>
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="B" Background="#26FFFFFF" CornerRadius="4" Padding="6,1,6,2">
+              <ContentPresenter/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="B" Property="Background" Value="#40FFFFFF"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="Principal" TargetType="Button">
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="B" Background="#FF3B82F6" CornerRadius="7" Padding="12,4,12,5">
+              <ContentPresenter HorizontalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="B" Property="Background" Value="#FF2563EB"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="DatePickerTextBox">
+      <Setter Property="Foreground" Value="#FFF1F3F5"/>
+      <Setter Property="CaretBrush" Value="#FFF1F3F5"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="DatePickerTextBox">
+            <ScrollViewer x:Name="PART_ContentHost" Margin="3,1,0,1" VerticalAlignment="Center"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="DatePicker">
+      <Setter Property="Width" Value="124"/>
+      <Setter Property="Background" Value="#14FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#33FFFFFF"/>
+      <Setter Property="Foreground" Value="#FFF1F3F5"/>
+    </Style>
+  </Window.Resources>
+  <Border Margin="8" CornerRadius="10" Background="#F21F2125" BorderBrush="#33FFFFFF" BorderThickness="1">
+    <Border.Effect>
+      <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.4"/>
+    </Border.Effect>
+    <StackPanel>
+      <Grid x:Name="Cabecalho" Background="Transparent" Margin="12,7,6,7" Cursor="SizeAll">
+        <TextBlock Text="Relatório de horas" Foreground="#FFF1F3F5" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
+        <Button Content="&#xE8BB;" ToolTip="Cancelar" IsCancel="True" HorizontalAlignment="Right" Cursor="Arrow"/>
+      </Grid>
+      <StackPanel Margin="12,0,12,12">
+        <TextBlock TextWrapping="Wrap" Foreground="#FF9AA0A6" FontSize="11" Text="Chamados com horas DEV realizadas acima das estimadas que tiveram Aguardando Homologação no período. O relatório abre em PDF."/>
+        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+          <TextBlock Text="De" Foreground="#FFDDE1E6" VerticalAlignment="Center" Margin="0,0,8,0"/>
+          <DatePicker x:Name="De"/>
+          <TextBlock Text="até" Foreground="#FFDDE1E6" VerticalAlignment="Center" Margin="10,0,8,0"/>
+          <DatePicker x:Name="Ate"/>
+        </StackPanel>
+        <DockPanel Margin="0,12,0,0">
+          <Button x:Name="Gerar" DockPanel.Dock="Right" Style="{StaticResource Principal}" Content="Gerar PDF" IsDefault="True"/>
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Button x:Name="EsteMes" Style="{StaticResource Chip}" Content="Este mês"/>
+            <Button x:Name="MesPassado" Style="{StaticResource Chip}" Content="Mês passado" Margin="6,0,0,0"/>
+          </StackPanel>
+        </DockPanel>
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>
+'@
+
+# Janela do periodo, no visual do painel: devolve @{ ini; fim } ou $null (cancelado)
+function Show-PeriodoRelatorio {
+    $d = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xml]$xamlPeriodo)))
+    $d.Owner = $win
+    $d.Resources.Add([System.Windows.Controls.Button], $win.Resources[[System.Windows.Controls.Button]])   # botao de icone do painel (o de fechar)
+    $d.FindName('Cabecalho').Add_MouseLeftButtonDown({ try { [System.Windows.Window]::GetWindow($this).DragMove() } catch {} })
+    $mes = (Get-Date).Date.AddDays(1 - (Get-Date).Day)
+    $de = $d.FindName('De'); $ate = $d.FindName('Ate')
+    $de.SelectedDate = $mes
+    $ate.SelectedDate = (Get-Date).Date
+    # os botoes levam o periodo no Tag: o clique nao enxerga as variaveis desta funcao
+    $d.FindName('EsteMes').Tag = @($mes, (Get-Date).Date)
+    $d.FindName('MesPassado').Tag = @($mes.AddMonths(-1), $mes.AddDays(-1))
+    foreach ($n in @('EsteMes', 'MesPassado')) {
+        $d.FindName($n).Add_Click({
+                $j = [System.Windows.Window]::GetWindow($this)
+                $j.FindName('De').SelectedDate = $this.Tag[0]
+                $j.FindName('Ate').SelectedDate = $this.Tag[1]
+            })
+    }
+    $d.FindName('Gerar').Add_Click({ [System.Windows.Window]::GetWindow($this).DialogResult = $true })
+    if (-not $d.ShowDialog() -or -not $de.SelectedDate -or -not $ate.SelectedDate) { return $null }
+    $ini = [datetime]$de.SelectedDate; $fim = [datetime]$ate.SelectedDate
+    if ($ini -gt $fim) { $ini, $fim = $fim, $ini }
+    return @{ ini = $ini; fim = $fim }
 }
 
 # ---------------------------------------------------------------- visual
@@ -589,6 +1031,7 @@ $BrushTitle   = New-Brush '#FFDDE1E6'
 $BrushMuted   = New-Brush '#FF9AA0A6'
 $BrushIcon    = New-Brush '#FFB0B4BA'
 $BrushRecent  = New-Brush '#FFFCD34D'
+$BrushEstouro = New-Brush '#FFFCA5A5'
 $BrushRow     = New-Brush '#14FFFFFF'
 $BrushRowOver = New-Brush '#26FFFFFF'
 $BrushBadge   = New-Brush '#FF3B82F6'
@@ -809,10 +1252,34 @@ function New-TextLine([string]$text, $brush, [double]$size, [double]$top) {
     return $t
 }
 
+# "Estimado 1,50 h  ·  Realizado 2,68 h" (horas DEV da Extranet); o realizado fica vermelho quando passa do estimado
+function New-LinhaHoras($c) {
+    $est = Get-Horas ([string]$c.horasEstimadas)
+    $real = Get-Horas ([string]$c.horasRealizadas)
+    if (-not $est -and -not $real) { return $null }
+    $t = New-Object System.Windows.Controls.TextBlock
+    $t.FontSize = 11
+    $t.Margin = T 0 2 0 0
+    $r1 = New-Object System.Windows.Documents.Run ("Estimado $(Get-TextoHoras ([string]$c.horasEstimadas))  ·  ")
+    $r1.Foreground = $BrushMuted
+    $r2 = New-Object System.Windows.Documents.Run ("Realizado $(Get-TextoHoras ([string]$c.horasRealizadas))")
+    if ($est -and $real -gt $est) { $r2.Foreground = $BrushEstouro } else { $r2.Foreground = $BrushMuted }
+    [void]$t.Inlines.Add($r1)
+    [void]$t.Inlines.Add($r2)
+    return $t
+}
+
+function Get-TipHoras($c) {
+    if (-not (Get-Horas ([string]$c.horasEstimadas)) -and -not (Get-Horas ([string]$c.horasRealizadas))) { return '' }
+    return "`nHoras DEV: $(Get-TextoHoras ([string]$c.horasEstimadas)) estimadas, $(Get-TextoHoras ([string]$c.horasRealizadas)) realizadas"
+}
+
 function New-Row($c, [bool]$novo) {
     $tip = "$($c.codigo) - $($c.titulo)`n$($c.cliente)`n$($c.categoria)"
     if ($c.versao) { $tip += "`nVersão: $($c.versao)" }
     if ($c.dataPrevista) { $tip += "`nPrevisto para $($c.dataPrevista)" }
+    $tip += Get-TipHoras $c
+    if ($c.chegou) { $tip += "`nCom você desde $($c.chegou)" }
     $row = New-RowBorder $c "$tip`nCriado em $($c.criacao)`nClique para abrir na Extranet"
     $sp = New-Object System.Windows.Controls.StackPanel
     $tags = @((New-TipoTag ([string]$c.tipo)))
@@ -835,6 +1302,8 @@ function New-Row($c, [bool]$novo) {
     [void]$meta.Inlines.Add($r1)
     [void]$meta.Inlines.Add($r2)
     [void]$sp.Children.Add($meta)
+    $lh = New-LinhaHoras $c
+    if ($lh) { [void]$sp.Children.Add($lh) }
     $row.Child = $sp
     return $row
 }
@@ -842,6 +1311,7 @@ function New-Row($c, [bool]$novo) {
 function New-HistRow($e) {
     $tip = "$($e.codigo) - $($e.titulo)`n$($e.cliente)`nStatus final: $($e.statusFinal)`nResponsável atual: $($e.responsavelAtual)"
     if ($e.ultimoStatus) { $tip += "`nÚltimo status na sua fila: $($e.ultimoStatus)" }
+    $tip += Get-TipHoras $e
     $row = New-RowBorder $e "$tip`nClique para abrir na Extranet"
     $sp = New-Object System.Windows.Controls.StackPanel
     $d = Get-DataLocal $e.saiuEm
@@ -858,6 +1328,8 @@ function New-HistRow($e) {
         $partes += ('saiu de: ' + [string]$e.ultimoStatus)
     }
     if ($partes.Count -gt 0) { [void]$sp.Children.Add((New-TextLine ($partes -join '  ·  ') $BrushMuted 11 2)) }
+    $lh = New-LinhaHoras $e
+    if ($lh) { [void]$sp.Children.Add($lh) }
     $row.Child = $sp
     return $row
 }
@@ -978,10 +1450,12 @@ $script:calTipo = ''      # '' = todos os tipos
 $script:calDia  = $null
 $script:calVista = 'calendario'   # ou 'gantt'
 
-# why: o painel nao guarda o dia em que o chamado entrou na fila, entao "chegou" usa a data de criacao
+# "chegou" = dia em que o chamado veio para a sua responsabilidade (resgate ou delegacao, lido na pagina do chamado);
+# sem essa interacao, ou enquanto a pagina nao foi lida, vale a data de criacao
 function Get-EventosCalendario($ch, $hist) {
     foreach ($c in @(@($ch) + @($hist) | Where-Object { $_ })) {
-        $d = Get-DataBr ([string]$c.criacao)
+        $d = Get-DataBr ([string]$c.chegou)
+        if (-not $d) { $d = Get-DataBr ([string]$c.criacao) }
         if ($d) { [pscustomobject]@{ dia = $d.Date; evento = 'chegou'; item = $c } }
     }
     foreach ($e in @($hist | Where-Object { $_ })) {
@@ -1149,7 +1623,7 @@ function Draw-Calendario($ch) {
         $run.Foreground = $p[1]
         [void]$res.Inlines.Add($run)
     }
-    $res.ToolTip = "Chegou = data de criação do chamado. Entregue = dia em que saiu da sua fila.`nSaldo positivo: a fila cresceu no mês."
+    $res.ToolTip = "Chegou = dia em que você resgatou o chamado ou ele foi delegado para você (sem isso, a data de criação).`nEntregue = dia em que saiu da sua fila.`nSaldo positivo: a fila cresceu no mês."
     [void]$List.Children.Add($res)
 
     # filtro por tipo
@@ -1227,7 +1701,7 @@ function Draw-Calendario($ch) {
     $v = $porDia[$sel.Day]
     if (-not $v) { [void]$List.Children.Add((New-Vazio "Nada em $($sel.ToString('dd/MM')).")); return }
     if ($v.chegou.Count) {
-        [void]$List.Children.Add((New-Secao "Chegaram em $($sel.ToString('dd/MM')) · $($v.chegou.Count)" 'Pela data de criação do chamado'))
+        [void]$List.Children.Add((New-Secao "Chegaram em $($sel.ToString('dd/MM')) · $($v.chegou.Count)" 'Dia em que você resgatou o chamado ou ele foi delegado para você'))
         foreach ($c in $v.chegou) { if ($c.saiuEm) { [void]$List.Children.Add((New-HistRow $c)) } else { [void]$List.Children.Add((New-Row $c $false)) } }
     }
     if ($v.entregue.Count) {
@@ -1316,6 +1790,7 @@ function Toggle-Startup {
 }
 
 Remove-PlanilhaHistorico   # sobra de quando o painel fechou com o Excel aberto
+Remove-RelatoriosPdf
 
 try {
     $win = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xml]$xaml)))
@@ -1362,6 +1837,8 @@ try {
     $mi.Add_Click({ if (-not $script:busca -and (Pedir-Extranet)) { Start-Busca 'manual' } }); [void]$menu.Items.Add($mi)
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Abrir histórico no Excel'
     $mi.Add_Click({ Open-HistoricoExcel }); [void]$menu.Items.Add($mi)
+    $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Relatório de horas acima do estimado…'
+    $mi.Add_Click({ $per = Show-PeriodoRelatorio; if ($per) { Start-Relatorio $per.ini $per.fim } }); [void]$menu.Items.Add($mi)
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Recarregar da Extranet'
     $mi.Add_Click({ Render; Start-Busca 'manual' }); [void]$menu.Items.Add($mi)
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Voltar para o canto da tela'
@@ -1403,5 +1880,7 @@ try {
     [void][System.Windows.MessageBox]::Show("O mininet encontrou um erro:`n`n$($_.Exception.Message)`n`nLinha: $($_.InvocationInfo.ScriptLineNumber)", 'mininet')
 } finally {
     Remove-PlanilhaHistorico
+    Close-Pdf ''
+    Remove-RelatoriosPdf
     $mutex.ReleaseMutex()
 }

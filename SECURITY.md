@@ -44,6 +44,13 @@ A versão instalada aparece no menu do botão direito do painel ("mininet vX.Y.Z
 - **Só existe enquanto é usada.** A planilha é gerada na hora em que a pessoa clica em **Abrir histórico no Excel**, em `%LOCALAPPDATA%\FilaChamados`, uma pasta do próprio usuário, fora da pasta do painel e do OneDrive. Ela é apagada quando o painel fecha. Se o Excel ainda estiver com ela aberta, é apagada na próxima vez que o painel abrir. O histórico em si fica guardado no `historico.json`, cifrado.
 - **Sem fórmulas:** texto que começa com `=`, `+`, `-` ou `@` é gravado como texto, e o Excel não executa nada que venha de um título de chamado.
 
+### Relatório de horas (PDF)
+
+- **Só existe enquanto é usado.** O PDF é gerado em `%LOCALAPPDATA%\FilaChamados`, fora da pasta do painel e do OneDrive, e apagado quando o painel fecha. Se um leitor de PDF ainda estiver com ele aberto, é apagado na próxima vez que o painel abrir.
+- **Impresso por um navegador à parte,** com perfil próprio, sem a sessão da Extranet e com o JavaScript desligado. O navegador que guarda a sua sessão continua abrindo só a Extranet.
+- **Sem HTML vindo de chamado:** título e cliente entram no relatório como texto, e o código de cada chamado é conferido (só números) antes de virar link.
+- **As páginas dos chamados são lidas pela própria página da Extranet,** com o seu login e no mesmo site. Nenhum dado vai para outro lugar.
+
 ### Componentes
 
 - **As DLLs do WebView2** (`webview2/`) são as originais do SDK da Microsoft, versão 1.0.4191.47, com assinatura digital da Microsoft Corporation.
@@ -57,6 +64,7 @@ A versão instalada aparece no menu do botão direito do painel ("mininet vX.Y.Z
 ## O que o painel não protege (cuidados)
 
 - **Enquanto o Excel está aberto, a planilha do histórico fica legível**, e uma cópia salva pelo **Salvar como** do Excel não é apagada pelo painel. Ela tem nomes de clientes e títulos de chamados: não envie para fora da empresa.
+- **O mesmo vale para o PDF do relatório de horas:** fica legível até o painel fechar, e uma cópia salva pelo **Salvar como** do leitor de PDF não é apagada.
 - **`diagnostico-extranet.html` fica aberto enquanto existir.** Ele tem a página inteira da sua fila. Não anexe em issues nem em lugares públicos.
 - **Quem entra na sua conta do Windows lê tudo.** A cifragem protege contra cópias da pasta, não contra quem usa a sua própria conta.
 - **O script não é assinado digitalmente.** Ele roda com `-ExecutionPolicy Bypass`. Baixe o painel só pelas releases deste repositório e não use cópias recebidas por outros caminhos.
