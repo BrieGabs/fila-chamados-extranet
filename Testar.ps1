@@ -93,6 +93,16 @@ Confere ($script:avisoTeste -match 'Nenhum chamado novo') "importacao: de novo, 
 $script:importacao = $null
 Remove-Item -LiteralPath $HistFile
 
+# iniciar/pausar execucao: o mesmo link do botao da lista da Extranet, e o aviso quando ela nao aceita
+Confere ((Get-UrlAcao @{ codigo = '100001'; iniciar = $true }) -eq ($ChamadoUrl + '100001&inicia_execucao=S') -and (Get-UrlAcao @{ codigo = '100001'; iniciar = $false }) -eq ($ChamadoUrl + '100001&pausa_execucao=S') -and $null -eq (Get-UrlAcao @{ codigo = '1x'; iniciar = $true })) 'execucao: link de iniciar e de pausar, so com codigo numerico'
+$script:acaoFeita = @{ codigo = '100001'; iniciar = $true }
+Confere ((Get-AvisoAcao @([pscustomobject]@{ codigo = '100001'; emExecucao = $true })) -eq '' -and $null -eq $script:acaoFeita) 'execucao: iniciou, sem aviso'
+$script:acaoFeita = @{ codigo = '100001'; iniciar = $true }
+Confere ((Get-AvisoAcao @([pscustomobject]@{ codigo = '100001'; emExecucao = $false })) -match 'não iniciou a execução do 100001') 'execucao: a Extranet nao iniciou, avisa'
+$script:acaoFeita = @{ codigo = '100001'; iniciar = $false }
+Confere ((Get-AvisoAcao @()) -match 'não está mais na sua fila') 'execucao: chamado que saiu da fila, avisa'
+Confere ((Get-AvisoAcao @([pscustomobject]@{ codigo = '100001'; emExecucao = $false })) -eq '') 'execucao: sem acao pedida, sem aviso'
+
 # ---------------------------------------------------------------- relatorio de horas
 $det = @{ '1' = [pscustomobject]@{ cliente = 'C1'; titulo = 'T1'; tipo = 'Incidência'; criacao = '01/09/2026' } }
 $pags = @(

@@ -240,6 +240,7 @@ Clique com o botão direito em qualquer ponto do painel.
 | **Abrir minha fila na Extranet** | Abre a lista completa no seu navegador |
 | **Abrir histórico no Excel** | Gera a planilha do histórico e abre no Excel |
 | **Relatório de horas acima do estimado…** | Gera o relatório do período escolhido e abre em PDF |
+| **Iniciar execução** / **Pausar execução** | No chamado da fila em que você clicou: faz o mesmo que o botão de iniciar ou pausar da lista da Extranet e lê a fila de novo. Avisa se a Extranet não aceitou |
 | **Importar meus chamados da Extranet para o histórico…** | Traz para o histórico os chamados em que você é o desenvolvedor, abertos desde o início do ano |
 | **Recarregar da Extranet** | O mesmo que o botão Recarregar |
 | **Trocar endereço da Extranet** | Pede o endereço da Extranet de novo |

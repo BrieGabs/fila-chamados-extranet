@@ -577,6 +577,8 @@ $script:ultimaBusca = [datetime]::MinValue
 $script:avisoBusca = ''
 $script:relatorio = $null      # periodo (@{ ini; fim }) do relatorio de horas pedido, enquanto a busca dele roda
 $script:importacao = $null     # @{ ini; etapa = 'buscar' | 'ler' | 'lendo' } enquanto importa para o historico os chamados em que voce e o desenvolvedor
+$script:acao = $null           # @{ codigo; iniciar } enquanto o painel inicia ou pausa a execucao de um chamado na Extranet
+$script:acaoFeita = $null      # a mesma, depois de acionada: a leitura da fila seguinte confere se a Extranet aceitou
 $script:pdf = $null            # navegador a parte (@{ janela; web; html; arq; tarefa; desde }) enquanto imprime o relatorio em PDF
 $script:pdfRelogio = $null
 
@@ -725,13 +727,47 @@ function Get-Codigos($lista) {
 function Open-Lista {
     $script:tentativas++
     $script:buscaDesde = Get-Date
-    if ($script:web.CoreWebView2) { $script:web.CoreWebView2.Navigate($ListaUrl) } else { $script:web.Source = [Uri]$ListaUrl }
+    $u = $ListaUrl
+    if ($script:acao) { $u = Get-UrlAcao $script:acao }   # iniciar/pausar: o mesmo link do botao da lista da Extranet; depois volta para a lista
+    if ($script:web.CoreWebView2) { $script:web.CoreWebView2.Navigate($u) } else { $script:web.Source = [Uri]$u }
+}
+
+# Link de iniciar ou pausar a execucao, como o da propria lista da Extranet (Chamado.aspx?CODIGO=...&inicia_execucao=S)
+function Get-UrlAcao($acao) {
+    if ([string]$acao.codigo -notmatch '^\d+$') { return $null }
+    $p = 'pausa_execucao'
+    if ($acao.iniciar) { $p = 'inicia_execucao' }
+    return "$ChamadoUrl$($acao.codigo)&$p=S"
+}
+
+# Botao direito num chamado da fila: inicia ou pausa a execucao dele na Extranet e le a fila de novo
+function Start-Acao([string]$codigo, [bool]$iniciar) {
+    if ($codigo -notmatch '^\d+$') { return }
+    $script:acao = @{ codigo = $codigo; iniciar = $iniciar }
+    $script:acaoFeita = $null
+    if ($script:busca -and -not $script:esperandoLogin) { $script:busca = $null }   # leitura em andamento: recomeca pela acao
+    Start-Busca 'manual'
+    if (-not $script:busca) { $script:acao = $null }
+}
+
+# Depois da leitura da fila: avisa se o chamado acionado nao ficou como pedido (em execucao ou nao)
+function Get-AvisoAcao($ch) {
+    $f = $script:acaoFeita
+    $script:acaoFeita = $null
+    if (-not $f) { return '' }
+    $c = @($ch | Where-Object { [string]$_.codigo -eq [string]$f.codigo }) | Select-Object -First 1
+    $verbo = 'pausou'
+    if ($f.iniciar) { $verbo = 'iniciou' }
+    if (-not $c) { return "O chamado $($f.codigo) não está mais na sua fila." }
+    if ([bool]$c.emExecucao -ne [bool]$f.iniciar) { return "A Extranet não $verbo a execução do $($f.codigo). Abra o chamado para ver o motivo." }
+    return ''
 }
 
 function Stop-Busca([string]$aviso) {
     $script:busca = $null
     $script:relatorio = $null
     $script:importacao = $null
+    $script:acao = $null
     $script:avisoBusca = $aviso
     Hide-Login
     Render
@@ -750,6 +786,12 @@ function On-Navegou($e) {
         if ($script:busca -eq 'manual') { Show-Login; return }
         $script:sessaoOk = $false
         Stop-Busca 'Sessão da Extranet fechada: clique em Recarregar para entrar.'
+    } elseif ($script:acao -and $url -match 'Chamado\.aspx' -and $url -match ('CODIGO=' + $script:acao.codigo + '(&|$)')) {
+        # a Extranet abriu o chamado com o iniciar/pausar: segue para a lista, que mostra se ficou em execucao
+        Hide-Login
+        $script:acaoFeita = $script:acao
+        $script:acao = $null
+        Open-Lista
     } elseif ($url -match 'Chamados\.aspx') {
         Hide-Login
         if ($script:importacao) { Invoke-Importacao; return }
@@ -844,7 +886,7 @@ function On-Fila([string]$json) {
     $script:sessaoOk = $true
     $script:ultimaBusca = Get-Date
     if ($script:relatorio) { $script:buscaDesde = Get-Date; Render; return }   # a busca segue: o leitor ainda manda as paginas do relatorio
-    Stop-Busca ''
+    Stop-Busca (Get-AvisoAcao $ch)
 }
 
 # ---------------------------------------------------------------- relatorio de horas
@@ -1328,7 +1370,7 @@ $xaml = @'
       </Grid>
       <TextBlock x:Name="Warn" Visibility="Collapsed" Foreground="#FFFBBF24" FontSize="11" TextWrapping="Wrap" Margin="12,0,12,7"/>
       <StackPanel x:Name="Corpo">
-        <WrapPanel x:Name="Filtros" Visibility="Collapsed" HorizontalAlignment="Center" Margin="10,0,10,5"/>
+        <WrapPanel x:Name="Filtros" Visibility="Collapsed" Margin="4,0,4,5"/>
         <ScrollViewer x:Name="Scroll" MaxHeight="520" VerticalScrollBarVisibility="Auto" Margin="6,0,4,7">
           <StackPanel x:Name="List" Margin="0,0,2,0"/>
         </ScrollViewer>
@@ -2022,11 +2064,19 @@ try {
     $miCopiar.Add_Click({ try { Set-Clipboard -Value ([string]$script:alvo.codigo) } catch {} }); [void]$menu.Items.Add($miCopiar)
     $miCopiarT = New-Object System.Windows.Controls.MenuItem; $miCopiarT.Header = 'Copiar código e título'
     $miCopiarT.Add_Click({ try { Set-Clipboard -Value "$($script:alvo.codigo) - $($script:alvo.titulo)" } catch {} }); [void]$menu.Items.Add($miCopiarT)
+    $miExecutar = New-Object System.Windows.Controls.MenuItem
+    $miExecutar.Add_Click({ if ($script:alvo) { Start-Acao ([string]$script:alvo.codigo) (-not [bool]$script:alvo.emExecucao) } }); [void]$menu.Items.Add($miExecutar)
     $sepCopiar = New-Object System.Windows.Controls.Separator; [void]$menu.Items.Add($sepCopiar)
     $Root.Add_PreviewMouseRightButtonDown({ $script:alvo = $null })
     $menu.Add_Opened({
             if ($script:alvo) { $v = 'Visible' } else { $v = 'Collapsed' }
             foreach ($i in @($miCopiar, $miCopiarT, $sepCopiar)) { $i.Visibility = $v }
+            # iniciar/pausar so vale para chamado que esta na fila agora (o do historico ja saiu de voce)
+            $naFila = $script:alvo -and -not $script:alvo.saiuEm -and @($state.ultimosCodigos | ForEach-Object { [string]$_ }) -contains [string]$script:alvo.codigo
+            if ($naFila) {
+                if ($script:alvo.emExecucao) { $miExecutar.Header = "Pausar execução do $($script:alvo.codigo)" } else { $miExecutar.Header = "Iniciar execução do $($script:alvo.codigo)" }
+                $miExecutar.Visibility = 'Visible'
+            } else { $miExecutar.Visibility = 'Collapsed' }
         })
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Abrir minha fila na Extranet'
     $mi.Add_Click({ if ($ExtranetDominio) { Start-Process $ListaUrl } else { Start-Busca 'manual' } }); [void]$menu.Items.Add($mi)   # sem endereco: pede
