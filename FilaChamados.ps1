@@ -208,7 +208,8 @@ function Update-Historico($prev, $atual, $saidosData, [string]$stamp) {
                 titulo           = [string]$det.titulo
                 categoria        = [string]$det.categoria
                 criacao          = [string]$det.criacao
-                chegou           = [string]$det.chegou
+                chegadas         = @($det.chegadas | Where-Object { $_ })
+                saidas           = @($det.saidas | Where-Object { $_ })
                 diasAberto       = [int]$det.diasAberto
                 horasEstimadas   = [string]$horas.horasEstimadas
                 horasRealizadas  = [string]$horas.horasRealizadas
@@ -219,20 +220,25 @@ function Update-Historico($prev, $atual, $saidosData, [string]$stamp) {
     if ($mudou) { Save-Historico $hist }
 }
 
-# Dia em que o chamado veio para a responsabilidade de $nome: a primeira interacao de resgate ("Resgatou chamado para sua
-# responsabilidade!") feita por ele, ou de delegacao para ele. Sem nenhuma, devolve '' e o calendario usa a data de criacao.
-# why: a primeira e nao a ultima, porque o chamado costuma voltar so para o repasse depois da homologacao, no mesmo dia em que sai
+# Idas e vindas do chamado com $nome, pelas trocas de responsavel lidas na pagina do chamado: cada vez que ele veio para $nome
+# (resgate feito por ele, ou delegacao para ele) e uma chegada; cada vez que saiu (delegado para outra pessoa ou fila, ou
+# resgatado por outra pessoa) e uma saida. Chamado que vai e volta conta mais de uma vez.
 # why: a lista escreve o nome curto ("FULANO TAL (EQUIPE 1)") e as interacoes o nome inteiro; valem as palavras do curto, na ordem
-function Get-Chegou($pagina, [string]$nome) {
+function Get-Movimentos($pagina, [string]$nome) {
+    $mov = [pscustomobject]@{ chegadas = @(); saidas = @() }
     $p = @(($nome -replace '\(.*?\)', '') -split '\s+' | Where-Object { $_ })
-    if ($p.Count -eq 0) { return '' }
+    if ($p.Count -eq 0) { return $mov }
     $re = '^\s*' + (@($p | ForEach-Object { [regex]::Escape($_) }) -join '\s(.*\s)?') + '(\s|$)'
-    $t = @($pagina.transferencias | Where-Object { $_ -and [string]$_.para -match $re }) | Select-Object -First 1
-    if ($t) { return [string]$t.dia }
-    return ''
+    $comigo = $false
+    foreach ($tr in @($pagina.transferencias | Where-Object { $_ -and $_.dia })) {
+        $meu = [string]$tr.para -match $re
+        if ($meu -and -not $comigo) { $mov.chegadas += [string]$tr.dia; $comigo = $true }
+        elseif (-not $meu -and $comigo) { $mov.saidas += [string]$tr.dia; $comigo = $false }
+    }
+    return $mov
 }
 
-# As horas e o dia da chegada lidos agora na pagina do chamado valem tambem para quem ja esta no historico (inclusive quem saiu
+# As horas e as idas e vindas lidas agora na pagina do chamado valem tambem para quem ja esta no historico (inclusive quem saiu
 # antes de o painel ler isso). horasLidasEm marca a entrada como lida: o leitor so volta a ela quando um relatorio de horas pede o historico inteiro
 function Update-HorasHistorico($paginas) {
     $pag = @{}
@@ -245,8 +251,13 @@ function Update-HorasHistorico($paginas) {
         $e | Add-Member -NotePropertyName horasEstimadas -NotePropertyValue ([string]$p.horasEstimadas) -Force
         $e | Add-Member -NotePropertyName horasRealizadas -NotePropertyValue ([string]$p.horasRealizadas) -Force
         $e | Add-Member -NotePropertyName horasLidasEm -NotePropertyValue (Get-Stamp (Get-Date)) -Force
-        # sem saber quem e voce (a fila ainda nao foi lida com chamados), a chegada fica para uma proxima leitura
-        if ($state.usuario) { $e | Add-Member -NotePropertyName chegou -NotePropertyValue (Get-Chegou $p ([string]$state.usuario)) -Force }
+        # sem saber quem e voce (a fila ainda nao foi lida com chamados), as idas e vindas ficam para uma proxima leitura
+        if ($state.usuario) {
+            $mov = Get-Movimentos $p ([string]$state.usuario)
+            $e | Add-Member -NotePropertyName chegadas -NotePropertyValue @($mov.chegadas) -Force
+            $e | Add-Member -NotePropertyName saidas -NotePropertyValue @($mov.saidas) -Force
+            $e.PSObject.Properties.Remove('chegou')   # campo antigo, so com a primeira chegada
+        }
         $mudou = $true
     }
     if ($mudou) { Save-Historico $hist }
@@ -639,7 +650,7 @@ function On-Navegou($e) {
         # ainda sem horas e, no relatorio de horas, do historico inteiro
         $hist = Get-Historico
         $pedido = "window.filaAnteriores = [$(Get-Codigos $state.ultimosCodigos)];"
-        $semLeitura = @($hist | Where-Object { -not $_.horasLidasEm -or ($state.usuario -and $_.PSObject.Properties.Name -notcontains 'chegou') })
+        $semLeitura = @($hist | Where-Object { -not $_.horasLidasEm -or ($state.usuario -and $_.PSObject.Properties.Name -notcontains 'chegadas') })
         $pedido += " window.filaHistorico = [$(Get-Codigos @($semLeitura | ForEach-Object { $_.codigo }))];"
         if ($script:relatorio) { $pedido += " window.filaRelatorio = [$(Get-Codigos @($hist | ForEach-Object { $_.codigo }))];" }
         [void]$script:web.ExecuteScriptAsync("$pedido`n$ScriptFila")
@@ -684,8 +695,8 @@ function On-Fila([string]$json) {
             $dias = 0
             if ($cad) { $dias = ($hoje - $cad.Date).Days }
             $h = $pag[[string]$c.codigo]
-            if ($h) { $chegou = Get-Chegou $h ([string]$c.responsavel) }
-            else { $h = $antes[[string]$c.codigo]; $chegou = [string]$h.chegou }
+            if ($h) { $mov = Get-Movimentos $h ([string]$c.responsavel) }
+            else { $h = $antes[[string]$c.codigo]; $mov = $h }
             [pscustomobject][ordered]@{
                 codigo          = [string]$c.codigo
                 cliente         = $c.cliente
@@ -697,7 +708,8 @@ function On-Fila([string]$json) {
                 categoria       = $c.categoria
                 tipo            = Get-TipoCategoria $c.categoria
                 criacao         = $c.criacao
-                chegou          = $chegou
+                chegadas        = @($mov.chegadas | Where-Object { $_ })
+                saidas          = @($mov.saidas | Where-Object { $_ })
                 diasAberto      = $dias
                 emExecucao      = [bool]$c.emExecucao
                 prioridade      = $c.prioridade
@@ -1279,7 +1291,8 @@ function New-Row($c, [bool]$novo) {
     if ($c.versao) { $tip += "`nVersão: $($c.versao)" }
     if ($c.dataPrevista) { $tip += "`nPrevisto para $($c.dataPrevista)" }
     $tip += Get-TipHoras $c
-    if ($c.chegou) { $tip += "`nCom você desde $($c.chegou)" }
+    $cheg = @($c.chegadas | Where-Object { $_ })
+    if ($cheg.Count) { $tip += "`nCom você desde $($cheg[-1])" }
     $row = New-RowBorder $c "$tip`nCriado em $($c.criacao)`nClique para abrir na Extranet"
     $sp = New-Object System.Windows.Controls.StackPanel
     $tags = @((New-TipoTag ([string]$c.tipo)))
@@ -1450,17 +1463,20 @@ $script:calTipo = ''      # '' = todos os tipos
 $script:calDia  = $null
 $script:calVista = 'calendario'   # ou 'gantt'
 
-# "chegou" = dia em que o chamado veio para a sua responsabilidade (resgate ou delegacao, lido na pagina do chamado);
-# sem essa interacao, ou enquanto a pagina nao foi lida, vale a data de criacao
+# Cada vez que o chamado veio para voce e um "chegou", e cada vez que saiu de voce e um "entregue": chamado que vai e volta
+# conta mais de uma vez. As idas e vindas vem das trocas de responsavel lidas na pagina do chamado (Get-Movimentos).
+# Sem nenhuma, "chegou" e a data de criacao e "entregue" e o dia em que o chamado saiu da fila (saiuEm); o saiuEm tambem
+# vale quando o chamado saiu da fila sem troca de responsavel (ex.: encerrado), ou antes de a pagina ser lida de novo
 function Get-EventosCalendario($ch, $hist) {
     foreach ($c in @(@($ch) + @($hist) | Where-Object { $_ })) {
-        $d = Get-DataBr ([string]$c.chegou)
-        if (-not $d) { $d = Get-DataBr ([string]$c.criacao) }
-        if ($d) { [pscustomobject]@{ dia = $d.Date; evento = 'chegou'; item = $c } }
-    }
-    foreach ($e in @($hist | Where-Object { $_ })) {
-        $d = Get-DataLocal $e.saiuEm
-        if ($d) { [pscustomobject]@{ dia = $d.Date; evento = 'entregue'; item = $e } }
+        $cheg = @($c.chegadas | ForEach-Object { Get-DataBr ([string]$_) } | Where-Object { $_ })
+        $sai = @($c.saidas | ForEach-Object { Get-DataBr ([string]$_) } | Where-Object { $_ })
+        $semMov = $cheg.Count -eq 0 -and $sai.Count -eq 0
+        if ($cheg.Count -eq 0) { $cheg = @(Get-DataBr ([string]$c.criacao) | Where-Object { $_ }) }
+        $d = Get-DataLocal $c.saiuEm
+        if ($d -and ($semMov -or $cheg.Count -gt $sai.Count)) { $sai += $d }
+        foreach ($d in $cheg) { [pscustomobject]@{ dia = $d.Date; evento = 'chegou'; item = $c } }
+        foreach ($d in $sai) { [pscustomobject]@{ dia = $d.Date; evento = 'entregue'; item = $c } }
     }
 }
 
@@ -1623,7 +1639,7 @@ function Draw-Calendario($ch) {
         $run.Foreground = $p[1]
         [void]$res.Inlines.Add($run)
     }
-    $res.ToolTip = "Chegou = dia em que você resgatou o chamado ou ele foi delegado para você (sem isso, a data de criação).`nEntregue = dia em que saiu da sua fila.`nSaldo positivo: a fila cresceu no mês."
+    $res.ToolTip = "Chegou = cada vez que o chamado veio para você (resgate ou delegação), inclusive quando volta; sem isso, a data de criação.`nEntregue = cada vez que saiu de você (delegado ou resgatado por outra pessoa); sem isso, o dia em que saiu da sua fila.`nSaldo positivo: a fila cresceu no mês."
     [void]$List.Children.Add($res)
 
     # filtro por tipo
@@ -1701,12 +1717,12 @@ function Draw-Calendario($ch) {
     $v = $porDia[$sel.Day]
     if (-not $v) { [void]$List.Children.Add((New-Vazio "Nada em $($sel.ToString('dd/MM')).")); return }
     if ($v.chegou.Count) {
-        [void]$List.Children.Add((New-Secao "Chegaram em $($sel.ToString('dd/MM')) · $($v.chegou.Count)" 'Dia em que você resgatou o chamado ou ele foi delegado para você'))
+        [void]$List.Children.Add((New-Secao "Chegaram em $($sel.ToString('dd/MM')) · $($v.chegou.Count)" 'Cada vez que você resgatou o chamado ou ele foi delegado para você'))
         foreach ($c in $v.chegou) { if ($c.saiuEm) { [void]$List.Children.Add((New-HistRow $c)) } else { [void]$List.Children.Add((New-Row $c $false)) } }
     }
     if ($v.entregue.Count) {
-        [void]$List.Children.Add((New-Secao "Entregues em $($sel.ToString('dd/MM')) · $($v.entregue.Count)" 'Saíram da sua fila neste dia'))
-        foreach ($e in $v.entregue) { [void]$List.Children.Add((New-HistRow $e)) }
+        [void]$List.Children.Add((New-Secao "Entregues em $($sel.ToString('dd/MM')) · $($v.entregue.Count)" 'Cada vez que o chamado saiu de você neste dia'))
+        foreach ($e in $v.entregue) { if ($e.saiuEm) { [void]$List.Children.Add((New-HistRow $e)) } else { [void]$List.Children.Add((New-Row $e $false)) } }   # pode ter saido e voltado: ainda na fila
     }
 }
 

@@ -209,8 +209,8 @@ Chamado sem estimativa (0,00) e com horas realizadas também entra; a coluna das
 
 **Calendário** mostra o movimento de cada dia do mês.
 
-- Barra **azul**: chamados que chegaram, no dia em que você resgatou o chamado ("Resgatou chamado para sua responsabilidade!") ou em que ele foi delegado para você. Se o chamado veio para você mais de uma vez, vale a primeira. Sem nenhuma dessas interações, vale a data de criação.
-- Barra **verde**: chamados entregues (o dia em que saíram da sua fila).
+- Barra **azul**: chamados que chegaram para você, no dia em que você resgatou o chamado ("Resgatou chamado para sua responsabilidade!") ou em que ele foi delegado para você. Chamado que sai e volta conta de novo a cada volta. Sem nenhuma dessas interações, vale a data de criação.
+- Barra **verde**: chamados entregues, a cada vez que saíram de você (delegados para outra pessoa ou fila, ou resgatados por outra pessoa). Se o chamado saiu da fila sem essa interação, vale o dia em que ele saiu da fila.
 - Clique em um dia para ver quais foram. Clique no nome do mês para voltar ao mês atual.
 
 **Gantt** mostra em quais dias cada chamado esteve em execução.

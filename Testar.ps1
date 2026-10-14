@@ -62,7 +62,7 @@ Update-HorasHistorico @([pscustomobject]@{ codigo = '3'; horasEstimadas = '3,00'
 $h = Get-Historico
 $h2 = $h | Where-Object { $_.codigo -eq '2' }; $h3 = $h | Where-Object { $_.codigo -eq '3' }
 Confere ($h.Count -eq 2 -and $h3.horasRealizadas -eq '5,75' -and $h3.horasLidasEm -and $h3.titulo -eq 'saiu sem leitura') 'historico: pagina lida depois atualiza as horas de quem ja saiu e marca como lida'
-Confere ($h3.chegou -eq '05/09/2026') "historico: pagina lida depois traz o dia em que o chamado chegou para o usuario logado (veio '$($h3.chegou)')"
+Confere ((@($h3.chegadas) -join ',') -eq '05/09/2026' -and @($h3.saidas).Count -eq 0 -and $h3.PSObject.Properties.Name -notcontains 'chegou') "historico: pagina lida depois traz as idas e vindas do chamado com o usuario logado (veio '$(@($h3.chegadas) -join ',')')"
 Confere ($h2.horasRealizadas -eq '3,25' -and -not $h2.horasLidasEm) 'historico: quem nao teve a pagina lida fica como estava'
 Confere ((Get-Codigos @('12', $null, 'x', 34)) -eq '12,34') 'codigos para o leitor: so numeros'
 Remove-Item -LiteralPath $HistFile
@@ -100,17 +100,31 @@ Confere ($ev.Count -eq 3) "calendario: 3 eventos (veio $($ev.Count))"
 Confere (@($ev | Where-Object { $_.evento -eq 'chegou' -and $_.dia -eq [datetime]'2026-06-23' }).Count -eq 1) 'calendario: chegou pela criacao'
 Confere (@($ev | Where-Object { $_.evento -eq 'chegou' -and $_.item.codigo -eq '3' }).Count -eq 1) 'calendario: historico tambem chegou'
 Confere (@($ev | Where-Object { $_.evento -eq 'entregue' -and $_.dia -eq (Get-DataLocal '2026-09-24T17:55:00.000Z').Date }).Count -eq 1) 'calendario: entregue pela saida da fila'
-$ev = @(Get-EventosCalendario @([pscustomobject]@{ codigo = '4'; criacao = '01/10/2026'; chegou = '07/10/2026' }) @())
-Confere ($ev.Count -eq 1 -and $ev[0].dia -eq [datetime]'2026-10-07') 'calendario: chegou pelo dia em que veio para voce, quando a pagina do chamado informou'
+# chamado que foi e voltou: duas chegadas e uma saida, ainda na fila
+$foiVoltou = [pscustomobject]@{ codigo = '4'; criacao = '01/10/2026'; chegadas = @('07/10/2026', '09/10/2026'); saidas = @('08/10/2026') }
+# saiu da fila sem troca de responsavel (encerrado): a saida e o dia em que saiu da fila
+$encerrado = [pscustomobject]@{ codigo = '5'; criacao = '01/10/2026'; chegadas = @('02/10/2026'); saidas = @(); saiuEm = '2026-10-05T15:00:00.000Z' }
+# saiu por delegacao: a saida vem da interacao, e o dia em que a fila notou nao conta de novo
+$delegado = [pscustomobject]@{ codigo = '6'; criacao = '01/10/2026'; chegadas = @('02/10/2026'); saidas = @('03/10/2026'); saiuEm = '2026-10-06T15:00:00.000Z' }
+$ev = @(Get-EventosCalendario @($foiVoltou) @($encerrado, $delegado))
+$dias = { param($cod, $evento) (@($ev | Where-Object { $_.item.codigo -eq $cod -and $_.evento -eq $evento } | ForEach-Object { $_.dia.ToString('dd/MM') }) -join ',') }
+Confere ((& $dias '4' 'chegou') -eq '07/10,09/10' -and (& $dias '4' 'entregue') -eq '08/10') 'calendario: chamado que vai e volta conta cada chegada e cada saida'
+Confere ((& $dias '5' 'chegou') -eq '02/10' -and (& $dias '5' 'entregue') -eq (Get-DataLocal '2026-10-05T15:00:00.000Z').ToString('dd/MM')) 'calendario: saiu da fila sem troca de responsavel, vale o dia em que saiu'
+Confere ((& $dias '6' 'entregue') -eq '03/10') 'calendario: saida pela delegacao nao conta duas vezes'
 $pgc = [pscustomobject]@{ transferencias = @(
         [pscustomobject]@{ dia = '06/10/2026'; para = 'BRUNO COSTA RAMOS' },
         [pscustomobject]@{ dia = '07/10/2026'; para = 'CARLOS EDUARDO PEREIRA DOS SANTOS' },
         [pscustomobject]@{ dia = '08/10/2026'; para = 'DANIELA DO CARMO SANTOS' },
         [pscustomobject]@{ dia = '09/10/2026'; para = 'CARLOS EDUARDO PEREIRA DOS SANTOS' },
         [pscustomobject]@{ dia = '10/10/2026'; para = 'FILA DE TESTE' }) }
-Confere ((Get-Chegou $pgc 'CARLOS EDUARDO (EQUIPE 1)') -eq '07/10/2026') 'chegou: primeira vez que o chamado veio para voce (nome curto da lista contra o nome inteiro da interacao)'
-Confere ((Get-Chegou $pgc 'carlos santos') -eq '07/10/2026' -and (Get-Chegou $pgc 'DANIELA SANTOS') -eq '08/10/2026') 'chegou: palavras do nome na ordem, sem ligar para maiusculas'
-Confere ((Get-Chegou $pgc 'CARLOS EDU') -eq '' -and (Get-Chegou $pgc 'EDUARDO PEREIRA') -eq '' -and (Get-Chegou $pgc '(EQUIPE 1)') -eq '' -and (Get-Chegou ([pscustomobject]@{ codigo = '1' }) 'CARLOS') -eq '') 'chegou: outro nome, nome vazio ou pagina sem trocas de responsavel ficam sem data'
+$mov = Get-Movimentos $pgc 'CARLOS EDUARDO (EQUIPE 1)'
+Confere ((@($mov.chegadas) -join ',') -eq '07/10/2026,09/10/2026' -and (@($mov.saidas) -join ',') -eq '08/10/2026,10/10/2026') "movimentos: cada vez que o chamado veio para voce e cada vez que saiu (veio $(@($mov.chegadas) -join ',') / $(@($mov.saidas) -join ','))"
+$mov = Get-Movimentos $pgc 'daniela santos'
+Confere ((@($mov.chegadas) -join ',') -eq '08/10/2026' -and (@($mov.saidas) -join ',') -eq '09/10/2026') 'movimentos: palavras do nome na ordem, sem ligar para maiusculas'
+$mov = Get-Movimentos ([pscustomobject]@{ transferencias = @(@($pgc.transferencias)[1], [pscustomobject]@{ dia = '07/10/2026'; para = 'CARLOS EDUARDO PEREIRA DOS SANTOS' }) }) 'CARLOS EDUARDO'
+Confere ((@($mov.chegadas) -join ',') -eq '07/10/2026' -and @($mov.saidas).Count -eq 0) 'movimentos: delegar para quem ja esta com o chamado nao e chegada nova'
+$vazios = @((Get-Movimentos $pgc 'CARLOS EDU'), (Get-Movimentos $pgc 'EDUARDO PEREIRA'), (Get-Movimentos $pgc '(EQUIPE 1)'), (Get-Movimentos ([pscustomobject]@{ codigo = '1' }) 'CARLOS'))
+Confere (@($vazios | Where-Object { @($_.chegadas).Count -or @($_.saidas).Count }).Count -eq 0) 'movimentos: outro nome, nome vazio ou pagina sem trocas de responsavel ficam sem idas e vindas'
 $ExecFile = Join-Path $env:TEMP 'FilaChamadosTeste-execucao.json'
 Remove-Item -LiteralPath $ExecFile -ErrorAction SilentlyContinue
 $lida = @([pscustomobject]@{ codigo = '1'; emExecucao = $true }, [pscustomobject]@{ codigo = '2'; emExecucao = $false })

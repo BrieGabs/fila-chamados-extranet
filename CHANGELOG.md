@@ -18,7 +18,7 @@ O projeto segue o [versionamento semântico](https://semver.org/lang/pt-BR/) (`M
 
 ### Alterado
 
-- Calendário: "chegou" passa a ser o dia em que você resgatou o chamado ou em que ele foi delegado para você, lido nas interações do chamado. Sem essa interação, continua valendo a data de criação.
+- Calendário: "chegou" passa a ser cada vez que o chamado veio para você (resgate ou delegação) e "entregue", cada vez que saiu de você, lidos nas interações do chamado. Chamado que sai e volta conta mais de uma vez. Sem essas interações, continuam valendo a data de criação e o dia em que o chamado saiu da fila.
 - A cada leitura, o painel abre também a página de cada chamado da fila, uma de cada vez e por até 45 segundos, para ler as horas e as interações.
 
 ### Adicionado
