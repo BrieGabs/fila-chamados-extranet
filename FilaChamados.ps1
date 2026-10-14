@@ -257,6 +257,8 @@ function Update-HorasHistorico($paginas) {
             $e | Add-Member -NotePropertyName chegadas -NotePropertyValue @($mov.chegadas) -Force
             $e | Add-Member -NotePropertyName saidas -NotePropertyValue @($mov.saidas) -Force
             $e.PSObject.Properties.Remove('chegou')   # campo antigo, so com a primeira chegada
+            # importado da busca: o dia em que saiu de voce so aparece agora, na ultima saida
+            if (-not $e.saiuEm -and @($mov.saidas).Count) { $d = Get-DataBr ([string]@($mov.saidas)[-1]); if ($d) { $e.saiuEm = Get-Stamp $d } }
         }
         $mudou = $true
     }
@@ -462,6 +464,108 @@ $ScriptFila = @'
 })();
 '@
 
+# Importacao para o historico: busca na propria lista da Extranet os chamados em que voce e o desenvolvedor, abertos no periodo.
+# Etapa 'buscar': preenche o filtro (Desenvolvedor = voce, Data abertura de/ate) e aciona o Procurar, que recarrega a pagina.
+# Etapa 'ler': na pagina do resultado, junta todas as paginas (a troca de pagina e AJAX, pelo "proxima" da propria Extranet).
+# ponytail: depende dos ids do filtro (ddlResponsavel, ddlDesenvolvedor, txtDataIni, txtDataFim, lnkProcurar, lnkNext) e das linhas rptChamados_*
+$ScriptImportacao = @'
+(() => {
+  const post = o => window.chrome.webview.postMessage(JSON.stringify(o.ok ? o : { ...o, html: document.documentElement.outerHTML }));
+  const progresso = (lidos, total) => window.chrome.webview.postMessage(JSON.stringify({ progresso: true, lidos, total }));
+  const t = el => (el ? el.textContent : '').replace(/\s+/g, ' ').trim();
+  const pedido = window.filaImportar || {};
+  if (pedido.etapa === 'buscar') {
+    try {
+      const resp = document.getElementById('ContentPlaceHolder1_ddlResponsavel');
+      const dev = document.getElementById('ContentPlaceHolder1_ddlDesenvolvedor');
+      const ini = document.getElementById('ContentPlaceHolder1_txtDataIni');
+      const fim = document.getElementById('ContentPlaceHolder1_txtDataFim');
+      if (!resp || !dev || !ini || !fim || typeof window.__doPostBack !== 'function') return post({ ok: false, erro: 'o filtro da lista mudou' });
+      // voce = o responsavel que a lista "Minha responsabilidade" ja traz marcado, com o nome inteiro; o filtro de
+      // desenvolvedor escreve o nome curto ("FULANO TAL - EQUIPE 1"): valem as palavras do curto, na ordem, no nome inteiro
+      const eu = resp.selectedOptions[0] && resp.selectedOptions[0].value ? t(resp.selectedOptions[0]) : '';
+      const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const mesmo = o => {
+        const p = o.text.replace(/\s+-\s+.*$/, '').trim().split(/\s+/).filter(x => x);
+        return p.length > 0 && new RegExp('^\\s*' + p.map(esc).join('\\s(.*\\s)?') + '(\\s|$)', 'i').test(eu);
+      };
+      const ops = [...dev.options].filter(o => o.value && mesmo(o));
+      if (!eu || ops.length !== 1) return post({ ok: false, erro: `não achei você no filtro de desenvolvedor (${ops.length} opções parecidas)` });
+      dev.value = ops[0].value;
+      resp.value = '';
+      ini.value = pedido.ini;
+      fim.value = pedido.fim;
+      const prm = window.Sys && Sys.WebForms && Sys.WebForms.PageRequestManager && Sys.WebForms.PageRequestManager.getInstance();
+      // o Procurar recarrega a pagina; se um dia virar AJAX, o fim do AJAX avisa
+      if (prm) { const fimBusca = () => { prm.remove_endRequest(fimBusca); post({ ok: true, buscaPronta: true }); }; prm.add_endRequest(fimBusca); }
+      post({ ok: true, buscando: true });
+      window.__doPostBack('ctl00$ContentPlaceHolder1$lnkProcurar', '');
+    } catch (e) { post({ ok: false, erro: 'o filtro da lista mudou: ' + e.message }); }
+    return;
+  }
+  const MAX_PAGINAS = 50, ESPERA_MS = 20000;
+  const ler = () => {
+    const total = (t(document.body).match(/Lista de Chamados \((\d+)\)/) || [])[1];
+    if (total === undefined) return { erro: 'a página não mostrou a Lista de Chamados' };
+    const linhas = [...document.querySelectorAll('tr[id^="ContentPlaceHolder1_rptChamados_divChamado_"]')];
+    if (linhas.length === 0 && +total > 0) return { erro: `a página não trouxe nenhum dos ${total} chamados` };
+    const chamados = linhas.map(tr => {
+      const oculto = n => { const i = tr.querySelector(`input[id^="ContentPlaceHolder1_rptChamados_${n}_"]`); return i ? i.value.trim() : ''; };
+      const td = n => tr.querySelector(`td[id^="ContentPlaceHolder1_rptChamados_${n}_"]`);
+      const painel = tr.querySelector('.panel-heading');
+      return {
+        codigo: oculto('hddCodigo'),
+        cliente: t(td('td1')),
+        status: t(td('td2').querySelector('span')),
+        titulo: t(painel.querySelector('h5 a')),
+        categoria: t([...painel.childNodes].find(n => n.nodeType === 3 && n.textContent.trim())),
+        criacao: (t(painel).match(/Cria\S*:\s*(\d{2}\/\d{2}\/\d{4})/) || [])[1] || '',
+        responsavel: (t(painel).match(/Respons\S*:\s*(.*?)\s*-\s*Cria/) || [])[1] || ''
+      };
+    });
+    if (chamados.some(c => !/^\d+$/.test(c.codigo) || !c.titulo)) return { erro: 'chamado sem código ou título na lista' };
+    // "proxima" habilitado: link com __doPostBack (o desabilitado vem sem href ou com a classe aspNetDisabled)
+    const prox = document.getElementById('ContentPlaceHolder1_lnkNext');
+    const alvo = prox && !prox.classList.contains('aspNetDisabled') && ((prox.getAttribute('href') || '').match(/__doPostBack\('([^']+)','([^']*)'\)/));
+    return { total: +total, chamados, alvo };
+  };
+  const todos = new Map();
+  let paginas = 0;
+  const passo = () => {
+    try {
+      const r = ler();
+      if (r.erro) return post({ ok: false, erro: r.erro });
+      const antes = todos.size;
+      r.chamados.forEach(c => todos.set(c.codigo, c));
+      paginas++;
+      if (todos.size < r.total && r.alvo) {
+        // hazard: pagina que nao trouxe nenhum chamado novo faria o leitor girar sem sair do lugar
+        if (paginas > 1 && todos.size === antes) return post({ ok: false, erro: `a página ${paginas} repetiu os chamados da anterior` });
+        if (paginas >= MAX_PAGINAS) return post({ ok: false, erro: `a busca passou de ${MAX_PAGINAS} páginas` });
+        const prm = window.Sys && Sys.WebForms && Sys.WebForms.PageRequestManager && Sys.WebForms.PageRequestManager.getInstance();
+        if (!prm || typeof window.__doPostBack !== 'function') return post({ ok: false, erro: `a busca trouxe ${r.total} chamados em mais de uma página e não deu para trocar de página` });
+        progresso(todos.size, r.total);
+        const espera = setTimeout(() => { prm.remove_endRequest(fim); post({ ok: false, erro: `a página ${paginas + 1} da busca não carregou` }); }, ESPERA_MS);
+        const fim = (s, a) => {
+          prm.remove_endRequest(fim);
+          clearTimeout(espera);
+          const e = a && a.get_error && a.get_error();
+          if (e) { if (a.set_errorHandled) a.set_errorHandled(true); return post({ ok: false, erro: 'erro ao trocar de página: ' + e.message }); }
+          setTimeout(passo, 0);
+        };
+        prm.add_endRequest(fim);
+        window.__doPostBack(r.alvo[1], r.alvo[2]);
+        return;
+      }
+      const chamados = [...todos.values()];
+      if (chamados.length !== r.total) return post({ ok: false, erro: `as páginas da busca trouxeram ${chamados.length} de ${r.total} chamados` });
+      post({ ok: true, importacao: chamados });
+    } catch (e) { post({ ok: false, erro: 'formato da busca mudou: ' + e.message }); }
+  };
+  passo();
+})();
+'@
+
 $script:web = $null
 $script:webWin = $null
 $script:busca = $null          # 'manual' ou 'auto' enquanto busca na Extranet
@@ -472,6 +576,7 @@ $script:sessaoOk = $false
 $script:ultimaBusca = [datetime]::MinValue
 $script:avisoBusca = ''
 $script:relatorio = $null      # periodo (@{ ini; fim }) do relatorio de horas pedido, enquanto a busca dele roda
+$script:importacao = $null     # @{ ini; etapa = 'buscar' | 'ler' | 'lendo' } enquanto importa para o historico os chamados em que voce e o desenvolvedor
 $script:pdf = $null            # navegador a parte (@{ janela; web; html; arq; tarefa; desde }) enquanto imprime o relatorio em PDF
 $script:pdfRelogio = $null
 
@@ -626,6 +731,7 @@ function Open-Lista {
 function Stop-Busca([string]$aviso) {
     $script:busca = $null
     $script:relatorio = $null
+    $script:importacao = $null
     $script:avisoBusca = $aviso
     Hide-Login
     Render
@@ -646,6 +752,7 @@ function On-Navegou($e) {
         Stop-Busca 'Sessão da Extranet fechada: clique em Recarregar para entrar.'
     } elseif ($url -match 'Chamados\.aspx') {
         Hide-Login
+        if ($script:importacao) { Invoke-Importacao; return }
         # pedidos ao leitor: alem da fila, a pagina de quem estava na leitura anterior (pode ter saido), do historico
         # ainda sem horas e, no relatorio de horas, do historico inteiro
         $hist = Get-Historico
@@ -664,9 +771,10 @@ function On-Fila([string]$json) {
     if (-not $script:busca) { return }
     $r = $json | ConvertFrom-Json
     if ($r.progresso) {
-        # fila em varias paginas: mostra o andamento e renova o prazo de 90 s (o prazo e "sem resposta", nao a busca inteira)
+        # fila (ou busca da importacao) em varias paginas: mostra o andamento e renova o prazo de 90 s (o prazo e "sem resposta", nao a busca inteira)
         $script:buscaDesde = Get-Date
-        $UpdatedText.Text = "atualizando… $([int]$r.lidos) de $([int]$r.total)"
+        if ($script:importacao) { $UpdatedText.Text = "importando… $([int]$r.lidos) de $([int]$r.total)" }
+        else { $UpdatedText.Text = "atualizando… $([int]$r.lidos) de $([int]$r.total)" }
         return
     }
     if (-not $r.ok) {
@@ -677,6 +785,12 @@ function On-Fila([string]$json) {
     # recados do relatorio de horas: andamento (renova o prazo de 90 s) e, no fim, as paginas lidas
     if ($r.andamento) { $script:buscaDesde = Get-Date; $UpdatedText.Text = "relatório: lendo $($r.andamento)…"; return }
     if ($r.PSObject.Properties.Name -contains 'relatorio') { Write-Relatorio @($r.relatorio | Where-Object { $_ -and [string]$_.codigo -match '^\d+$' }); return }
+    # recados da importacao: nenhum deles e a fila, entao nada aqui pode seguir para a gravacao da fila abaixo
+    if ($script:importacao -or $r.buscando -or $r.buscaPronta -or $r.PSObject.Properties.Name -contains 'importacao') {
+        if ($r.buscaPronta) { Invoke-Importacao }
+        elseif ($script:importacao -and $r.PSObject.Properties.Name -contains 'importacao') { Import-Historico @($r.importacao | Where-Object { $_ -and [string]$_.codigo -match '^\d+$' }) }
+        return
+    }
     # o codigo vira parte do link que o clique abre: confere de novo aqui, nao so no script da pagina
     if (@($r.chamados | Where-Object { [string]$_.codigo -notmatch '^\d+$' }).Count) {
         Stop-Busca 'Não consegui ler a fila na Extranet (chamado com código inválido): a fila mostra a última leitura.'
@@ -901,6 +1015,73 @@ function Close-Pdf([string]$erro) {
 function Remove-RelatoriosPdf {
     Get-ChildItem -LiteralPath $RelDir -Filter 'relatorio-horas-*.pdf' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 }
+# Proximo passo da importacao, a cada pagina da lista que abre (ou quando a busca avisa que terminou por AJAX)
+function Invoke-Importacao {
+    $imp = $script:importacao
+    $br = [Globalization.CultureInfo]::InvariantCulture
+    if ($imp.etapa -eq 'buscar') {
+        $imp.etapa = 'ler'
+        $pedido = "window.filaImportar = { etapa: 'buscar', ini: '$($imp.ini.ToString('dd/MM/yyyy', $br))', fim: '$((Get-Date).ToString('dd/MM/yyyy', $br))' };"
+    } elseif ($imp.etapa -eq 'ler') {
+        $imp.etapa = 'lendo'
+        $pedido = "window.filaImportar = { etapa: 'ler' };"
+    } else { return }
+    $script:buscaDesde = Get-Date
+    $UpdatedText.Text = 'importando…'
+    [void]$script:web.ExecuteScriptAsync("$pedido`n$ScriptImportacao")
+}
+
+# Chamados em que voce e o desenvolvedor, achados pela busca da Extranet, entram no historico (menos os que estao na fila
+# e os que ja estao la). Status e responsavel vem da propria busca; horas e idas e vindas, nas leituras seguintes
+# (filaHistorico, ate 45 s por leitura), e com elas o dia em que o chamado saiu de voce
+function Import-Historico($chamados) {
+    $hist = Get-Historico
+    $naFila = @($state.ultimosCodigos | ForEach-Object { [string]$_ })
+    $ja = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($e in $hist) { [void]$ja.Add([string]$e.codigo) }
+    $hoje = (Get-Date).Date
+    $novos = 0
+    foreach ($c in @($chamados | Where-Object { $_ -and [string]$_.codigo -match '^\d+$' })) {
+        $k = [string]$c.codigo
+        if ($naFila -contains $k -or -not $ja.Add($k)) { continue }
+        $cad = Get-DataBr ([string]$c.criacao)
+        $dias = 0
+        if ($cad) { $dias = ($hoje - $cad.Date).Days }
+        [void]$hist.Add([pscustomobject][ordered]@{
+                codigo           = $k
+                saiuEm           = ''
+                statusFinal      = [string]$c.status
+                responsavelAtual = [string]$c.responsavel
+                ultimoStatus     = ''
+                tipo             = Get-TipoCategoria ([string]$c.categoria)
+                cliente          = [string]$c.cliente
+                titulo           = [string]$c.titulo
+                categoria        = [string]$c.categoria
+                criacao          = [string]$c.criacao
+                diasAberto       = $dias
+                url              = $ChamadoUrl + $k
+                importado        = $true
+            })
+        $novos++
+    }
+    if ($novos) { Save-Historico $hist }
+    $total = @($chamados).Count
+    $periodo = "abertos desde $($script:importacao.ini.ToString('dd/MM/yyyy'))"
+    if ($novos) { Stop-Busca "Importei para o histórico $novos de $total chamados em que você é o desenvolvedor ($periodo). As horas e as idas e vindas de cada um são lidas aos poucos, nas próximas leituras." }
+    else { Stop-Busca "Nenhum chamado novo para o histórico: os $total chamados em que você é o desenvolvedor ($periodo) já estão na fila ou no histórico." }
+}
+
+# Pede confirmacao e comeca a importacao: chamados em que voce e o desenvolvedor, abertos desde o inicio do ano
+function Start-Importacao {
+    $ini = (Get-Date).Date.AddDays(1 - (Get-Date).DayOfYear)
+    $msg = "Buscar na Extranet os chamados em que você é o desenvolvedor, abertos desde $($ini.ToString('dd/MM/yyyy')), e colocar no histórico?`n`nOs que já estão na fila ou no histórico ficam como estão. As horas e as idas e vindas de cada chamado são lidas aos poucos, nas próximas leituras."
+    if ([System.Windows.MessageBox]::Show($win, $msg, 'mininet', 'YesNo', 'Question') -ne 'Yes') { return }
+    $script:importacao = @{ ini = $ini; etapa = 'buscar' }
+    if ($script:busca -and -not $script:esperandoLogin) { $script:busca = $null }   # leitura em andamento: recomeca pela busca
+    Start-Busca 'manual'
+    if (-not $script:busca) { $script:importacao = $null }
+}
+
 function Start-Relatorio([datetime]$ini, [datetime]$fim) {
     $script:relatorio = @{ ini = $ini.Date; fim = $fim.Date }
     if ($script:busca -and -not $script:esperandoLogin) { $script:busca = $null }   # leitura em andamento nao abre o historico: recomeca
@@ -1855,6 +2036,8 @@ try {
     $mi.Add_Click({ Open-HistoricoExcel }); [void]$menu.Items.Add($mi)
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Relatório de horas acima do estimado…'
     $mi.Add_Click({ $per = Show-PeriodoRelatorio; if ($per) { Start-Relatorio $per.ini $per.fim } }); [void]$menu.Items.Add($mi)
+    $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Importar meus chamados da Extranet para o histórico…'
+    $mi.Add_Click({ Start-Importacao }); [void]$menu.Items.Add($mi)
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Recarregar da Extranet'
     $mi.Add_Click({ Render; Start-Busca 'manual' }); [void]$menu.Items.Add($mi)
     $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Voltar para o canto da tela'

@@ -65,6 +65,32 @@ Confere ($h.Count -eq 2 -and $h3.horasRealizadas -eq '5,75' -and $h3.horasLidasE
 Confere ((@($h3.chegadas) -join ',') -eq '05/09/2026' -and @($h3.saidas).Count -eq 0 -and $h3.PSObject.Properties.Name -notcontains 'chegou') "historico: pagina lida depois traz as idas e vindas do chamado com o usuario logado (veio '$(@($h3.chegadas) -join ',')')"
 Confere ($h2.horasRealizadas -eq '3,25' -and -not $h2.horasLidasEm) 'historico: quem nao teve a pagina lida fica como estava'
 Confere ((Get-Codigos @('12', $null, 'x', 34)) -eq '12,34') 'codigos para o leitor: so numeros'
+
+# importacao: os chamados em que voce e o desenvolvedor entram no historico, menos os da fila e os que ja estao la
+function Stop-Busca([string]$aviso) { $script:avisoTeste = $aviso }   # sem painel aberto no teste
+$state = [pscustomobject]@{ usuario = 'ANA LIMA (EQUIPE 2)'; ultimosCodigos = @('7') }
+$script:importacao = @{ ini = [datetime]'2026-01-01'; etapa = 'lendo' }
+Import-Historico @(
+    [pscustomobject]@{ codigo = '7'; titulo = 'na fila'; status = 'Em Desenvolvimento' },
+    [pscustomobject]@{ codigo = '2'; titulo = 'ja no historico'; status = 'Homologado' },
+    [pscustomobject]@{ codigo = '8'; titulo = 'antigo'; status = 'Homologado'; cliente = 'CLIENTE EXEMPLO A'; categoria = 'SISTEMA WEB - INCIDÊNCIA'; criacao = '05/02/2026'; responsavel = 'BRUNO COSTA (EQUIPE 1)' },
+    [pscustomobject]@{ codigo = '8'; titulo = 'repetido'; status = 'Homologado' },
+    [pscustomobject]@{ codigo = 'x9'; titulo = 'codigo invalido' })
+$h = Get-Historico
+$h8 = @($h | Where-Object { $_.codigo -eq '8' })
+Confere ($h.Count -eq 3 -and $h8.Count -eq 1 -and $h8[0].titulo -eq 'antigo' -and $h8[0].importado) "importacao: so o chamado novo entra, uma vez (veio $($h.Count) no historico)"
+Confere ($h8[0].statusFinal -eq 'Homologado' -and $h8[0].responsavelAtual -eq 'BRUNO COSTA (EQUIPE 1)' -and $h8[0].tipo -eq 'Incidência' -and $h8[0].url -eq ($ChamadoUrl + '8') -and -not $h8[0].saiuEm) 'importacao: status e responsavel da busca; o dia em que saiu fica para a leitura da pagina'
+Confere ($script:avisoTeste -match 'Importei para o histórico 1 de 5 chamados' -and $script:avisoTeste -match '01/01/2026') "importacao: aviso com quantos entraram (veio '$($script:avisoTeste)')"
+Update-HorasHistorico @([pscustomobject]@{ codigo = '8'; horasEstimadas = ''; horasRealizadas = ''; transferencias = @([pscustomobject]@{ dia = '10/02/2026'; para = 'ANA LIMA SOUZA' }, [pscustomobject]@{ dia = '20/02/2026'; para = 'FILA DE TESTE' }) })
+$h = Get-Historico
+$h8 = @($h | Where-Object { $_.codigo -eq '8' })[0]
+Confere ((Get-DataLocal $h8.saiuEm).ToString('dd/MM/yyyy') -eq '20/02/2026' -and (@($h8.chegadas) -join ',') -eq '10/02/2026') "importacao: a pagina lida depois traz o dia em que o chamado saiu de voce (veio '$($h8.saiuEm)')"
+Update-HorasHistorico @([pscustomobject]@{ codigo = '2'; transferencias = @([pscustomobject]@{ dia = '10/02/2026'; para = 'ANA LIMA SOUZA' }, [pscustomobject]@{ dia = '20/02/2026'; para = 'FILA DE TESTE' }) })
+$h = Get-Historico
+Confere ((@($h | Where-Object { $_.codigo -eq '2' })[0].saiuEm) -eq '2026-09-24T17:55:00.000Z') 'importacao: quem ja tinha dia de saida pela fila fica com ele'
+Import-Historico @([pscustomobject]@{ codigo = '8'; titulo = 'antigo'; status = 'Homologado' })
+Confere ($script:avisoTeste -match 'Nenhum chamado novo') "importacao: de novo, nada entra em dobro (veio '$($script:avisoTeste)')"
+$script:importacao = $null
 Remove-Item -LiteralPath $HistFile
 
 # ---------------------------------------------------------------- relatorio de horas
@@ -195,10 +221,12 @@ Add-Type -Path (Join-Path $wv2 'Microsoft.Web.WebView2.Wpf.dll')
 [Microsoft.Web.WebView2.Core.CoreWebView2Environment]::SetLoaderDllFolderPath($wv2)
 $script:js = $ast.Find({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] -and $args[0].Left.Extent.Text -eq '$ScriptFila' }, $true).Right.Expression.Value
 
-# roda $ScriptFila na pagina dentro de um WebView2 fora da tela e devolve o recado (JSON) que ele mandar;
+$script:jsImportacao = $ast.Find({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] -and $args[0].Left.Extent.Text -eq '$ScriptImportacao' }, $true).Right.Expression.Value
+
+# roda $ScriptFila (ou outro script, em $codigo) na pagina dentro de um WebView2 fora da tela e devolve o recado (JSON) que ele mandar;
 # $pedido = JavaScript que roda antes (pede o relatorio de horas: ai sao varios recados - a fila, o andamento e, no fim, as paginas)
-function Ler-Pagina([string]$h, [string]$pedido = '') {
-    $script:html = $h; $script:resp = @(); $script:progressos = 0; $script:pedido = $pedido
+function Ler-Pagina([string]$h, [string]$pedido = '', [string]$codigo = $script:js) {
+    $script:html = $h; $script:resp = @(); $script:progressos = 0; $script:pedido = $pedido; $script:codigoJs = $codigo
     $script:jan = New-Object System.Windows.Window
     $script:jan.Width = 300; $script:jan.Height = 200; $script:jan.Left = -5000; $script:jan.ShowInTaskbar = $false; $script:jan.ShowActivated = $false
     $script:wv = New-Object Microsoft.Web.WebView2.Wpf.WebView2
@@ -206,13 +234,13 @@ function Ler-Pagina([string]$h, [string]$pedido = '') {
     $cp.UserDataFolder = Join-Path $env:TEMP 'FilaChamadosTeste'
     $script:wv.CreationProperties = $cp
     $script:wv.Add_CoreWebView2InitializationCompleted({ $script:wv.CoreWebView2.NavigateToString($script:html) })
-    $script:wv.Add_NavigationCompleted({ [void]$script:wv.ExecuteScriptAsync("$($script:pedido)`n$($script:js)") })
+    $script:wv.Add_NavigationCompleted({ [void]$script:wv.ExecuteScriptAsync("$($script:pedido)`n$($script:codigoJs)") })
     $script:wv.Add_WebMessageReceived({
             param($s, $e)
             $m = $e.TryGetWebMessageAsString() | ConvertFrom-Json
             if ($m.progresso) { $script:progressos++; return }   # andamento da leitura em varias paginas: espera a resposta final
             $script:resp += $m
-            if (-not $m.ok -or -not $script:pedido -or $m.PSObject.Properties.Name -contains 'relatorio') { $script:jan.Close() }
+            if (-not $m.ok -or -not $script:pedido -or @($m.PSObject.Properties.Name | Where-Object { $_ -in 'relatorio', 'importacao', 'postback' }).Count) { $script:jan.Close() }
         })
     $script:jan.Content = $script:wv
     $script:jan.Add_ContentRendered({ [void]$script:wv.EnsureCoreWebView2Async($null) })
@@ -286,6 +314,29 @@ $r = Ler-Pagina ($pagina.Replace('(2)', '(3)').Replace('</body>', '<a id="Conten
 Confere (-not $r.ok -and $r.erro -match 'trocar de página' -and $r.html) "paginas: sem AJAX da Extranet e recusado (erro: $($r.erro))"
 $r = Ler-Pagina ($pagina.Replace('(2)', '(0)') -replace '(?s)<tr id="ContentPlaceHolder1_rptChamados_divChamado_.*?</tr>', '')
 Confere ($r.ok -and @($r.chamados).Count -eq 0) "fila vazia: aceita (erro: $($r.erro))"
+
+# ---------------------------------------------------------------- importacao: busca por desenvolvedor
+# Filtro da lista como na Extranet: o Responsavel vem marcado com voce (nome inteiro) e o Desenvolvedor escreve o nome curto.
+# O __doPostBack de mentira devolve o que o script deixou no filtro, no lugar de recarregar a pagina
+$filtro = @'
+<select id="ContentPlaceHolder1_ddlResponsavel"><option value="">SELECIONE</option><option value="31" selected>ANA LIMA SOUZA</option><option value="32">BRUNO COSTA RAMOS</option></select>
+<select id="ContentPlaceHolder1_ddlDesenvolvedor"><option value="">SELECIONE</option><option value="41">ANA PAULA - EQUIPE 1</option><option value="42">ANA LIMA - EQUIPE 2</option><option value="43">BRUNO COSTA - EQUIPE 1</option></select>
+<input id="ContentPlaceHolder1_txtDataIni" type="text"><input id="ContentPlaceHolder1_txtDataFim" type="text">
+<script>
+  window.__doPostBack = alvo => window.chrome.webview.postMessage(JSON.stringify({ ok: true, postback: alvo,
+    desenvolvedor: document.getElementById('ContentPlaceHolder1_ddlDesenvolvedor').value, responsavel: document.getElementById('ContentPlaceHolder1_ddlResponsavel').value,
+    ini: document.getElementById('ContentPlaceHolder1_txtDataIni').value, fim: document.getElementById('ContentPlaceHolder1_txtDataFim').value }));
+</script></body>
+'@
+$m = @(Ler-Pagina ($pagina.Replace('</body>', $filtro)) "window.filaImportar = { etapa: 'buscar', ini: '01/01/2026', fim: '14/10/2026' };" $script:jsImportacao)
+$pb = @($m | Where-Object { $_.postback })[0]
+Confere ($pb.postback -eq 'ctl00$ContentPlaceHolder1$lnkProcurar' -and $pb.desenvolvedor -eq '42' -and $pb.responsavel -eq '' -and $pb.ini -eq '01/01/2026' -and $pb.fim -eq '14/10/2026') "importacao: filtro com voce como desenvolvedor, sem responsavel, no periodo (veio $($pb | ConvertTo-Json -Compress))"
+$m = @(Ler-Pagina ($pagina.Replace('</body>', $filtro.Replace('<option value="31" selected>', '<option value="31">'))) "window.filaImportar = { etapa: 'buscar', ini: '01/01/2026', fim: '14/10/2026' };" $script:jsImportacao)
+Confere (-not $m[0].ok -and $m[0].erro -match 'não achei você') "importacao: sem saber quem e voce, nao busca nada (erro: $($m[0].erro))"
+$r = @(Ler-Pagina (Pagina-Paginada 'ok') "window.filaImportar = { etapa: 'ler' };" $script:jsImportacao)[0]
+Confere ($r.ok -and (@($r.importacao | ForEach-Object { $_.codigo }) -join ',') -eq '100001,100002,100003' -and $r.importacao[0].responsavel -eq 'X' -and $r.importacao[0].status -eq 'Em Desenvolvimento' -and $script:progressos -eq 1) "importacao: junta todas as paginas do resultado da busca (erro: $($r.erro))"
+$r = @(Ler-Pagina (Pagina-Paginada 'repete') "window.filaImportar = { etapa: 'ler' };" $script:jsImportacao)[0]
+Confere (-not $r.ok -and $r.erro -match 'repetiu') "importacao: pagina repetida e recusada (erro: $($r.erro))"
 
 # ---------------------------------------------------------------- filtro por status
 $fila = @('Em Análise', 'Novo', 'Em Análise', 'Aguardando Cliente', 'Novo', 'Em Análise') | ForEach-Object { [pscustomobject]@{ status = $_ } }

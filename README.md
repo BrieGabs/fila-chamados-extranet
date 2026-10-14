@@ -184,6 +184,14 @@ O histórico mostra também as horas DEV estimadas e realizadas de cada chamado.
 
 Para ver o histórico no Excel, clique com o botão direito no painel e escolha **Abrir histórico no Excel**. A planilha é gerada na hora em que você abre, numa pasta só sua, e apagada quando você fecha o painel. Se quiser guardar uma cópia, use **Salvar como** no Excel.
 
+#### Importar chamados antigos
+
+O histórico começa no dia em que você instalou o painel. Para trazer os chamados de antes, clique com o botão direito no painel e escolha **Importar meus chamados da Extranet para o histórico…**.
+
+O painel usa a busca da própria Extranet, com o seu login: chamados em que você é o **Desenvolvedor/Técnico TI**, abertos desde 1º de janeiro deste ano. Os que já estão na fila ou no histórico ficam como estão, então dá para importar de novo sem duplicar nada.
+
+Cada chamado entra com o status e o responsável de agora. As horas, as idas e vindas e o dia em que ele saiu de você são lidos aos poucos, nas leituras seguintes, por até 45 segundos em cada uma. Com centenas de chamados, isso leva algumas horas com o painel aberto.
+
 ### Relatório de horas acima do estimado
 
 Botão direito no painel, **Relatório de horas acima do estimado…**. Escolha o período (ou use **Este mês** / **Mês passado**) e clique em **Gerar PDF**.
@@ -232,6 +240,7 @@ Clique com o botão direito em qualquer ponto do painel.
 | **Abrir minha fila na Extranet** | Abre a lista completa no seu navegador |
 | **Abrir histórico no Excel** | Gera a planilha do histórico e abre no Excel |
 | **Relatório de horas acima do estimado…** | Gera o relatório do período escolhido e abre em PDF |
+| **Importar meus chamados da Extranet para o histórico…** | Traz para o histórico os chamados em que você é o desenvolvedor, abertos desde o início do ano |
 | **Recarregar da Extranet** | O mesmo que o botão Recarregar |
 | **Trocar endereço da Extranet** | Pede o endereço da Extranet de novo |
 | **Voltar para o canto da tela** | Devolve o painel ao canto inferior direito |
@@ -402,7 +411,8 @@ Limitações conhecidas:
 - O Gantt só conta os dias em que uma leitura viu o chamado "em execução". Execuções curtas entre duas leituras, ou com o painel fechado, ficam de fora.
 - As horas e o dia em que o chamado chegou para você não estão na lista: a cada leitura o painel abre também a página de cada chamado da fila e dos chamados do histórico ainda sem esses dados, uma de cada vez. O que não couber em 45 segundos fica para a leitura seguinte.
 - As horas do histórico são lidas quando o chamado sai da sua fila e mais uma vez na leitura seguinte. Depois disso, só são atualizadas quando você gera um relatório de horas, que relê todos.
-- O relatório de horas só enxerga os chamados que o painel conhece: a fila atual e o histórico (chamados que passaram pela sua fila com o painel instalado). Com histórico grande, ele demora: abre uma página por chamado.
+- O relatório de horas só enxerga os chamados que o painel conhece: a fila atual e o histórico (os que passaram pela sua fila com o painel instalado e os importados). Com histórico grande, ele demora: abre uma página por chamado.
+- Um chamado importado em que você foi só o desenvolvedor, sem nunca ter ficado sob sua responsabilidade, aparece no calendário pela data de criação e não tem dia de entrega.
 - As colunas "Status final" e "Responsável atual" da planilha do histórico ficam em branco: o painel registra quando o chamado saiu da fila, mas não consulta o chamado depois disso.
 
 ### Como lançar uma versão

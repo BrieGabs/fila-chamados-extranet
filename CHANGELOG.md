@@ -25,6 +25,7 @@ O projeto segue o [versionamento semântico](https://semver.org/lang/pt-BR/) (`M
 
 - Horas DEV estimadas e realizadas de cada chamado, na fila, no histórico e na planilha do histórico. O realizado fica em vermelho quando passa do estimado.
 - Relatório de horas acima do estimado, no menu do botão direito: chamados com horas realizadas maiores que as estimadas que passaram por "Aguardando Homologação" no período escolhido, em PDF. O PDF é temporário como a planilha do histórico e é impresso por um navegador à parte, sem a sessão da Extranet e sem JavaScript.
+- Importar para o histórico, no menu do botão direito, os chamados em que você é o desenvolvedor, abertos desde o início do ano, pela busca da própria Extranet. Horas e idas e vindas de cada um são lidas aos poucos, nas leituras seguintes.
 
 ## [1.1.0] - 2026-10-10
 
