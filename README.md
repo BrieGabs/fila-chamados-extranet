@@ -149,7 +149,7 @@ Pronto. Daqui em diante o painel se atualiza sozinho a cada 15 minutos. Quando a
 | 5 | Recarregar | Lê a fila da Extranet agora |
 | 6 | Recolher | Encolhe o painel para só o cabeçalho, e expande de volta |
 | 7 | Fechar | Fecha o painel |
-| 8 | Chamado | Clique para abrir na Extranet. Passe o mouse para ver cliente, versão e data prevista |
+| 8 | Chamado | Clique para abrir na Extranet. Passe o mouse para ver cliente, versão, data prevista e horas |
 | 9 | Dias em aberto | Há quantos dias o chamado foi criado |
 
 **Para mover o painel**, arraste pelo cabeçalho. Ele lembra a posição.
@@ -163,6 +163,7 @@ Cada chamado mostra o código, as etiquetas, o título, o cliente e o status atu
 </p>
 
 - O status fica **amarelo** quando mudou hoje ou ontem.
+- Quando o chamado tem horas DEV na Extranet, uma linha a mais mostra **Estimado** e **Realizado** (os campos "Horas DEV Estimadas" e "Horas DEV Realizadas" do chamado). O realizado fica **vermelho** quando passa do estimado.
 - A lista traz primeiro o que está **em execução**, depois as **incidências**, depois o que mudou de status há menos tempo.
 
 ### Fila grande
@@ -179,7 +180,32 @@ Quando um chamado sai da sua fila, ele passa para o histórico, com o dia em que
   <img src="docs/historico.png" width="414" alt="Tela de histórico com quatro chamados que saíram da fila">
 </p>
 
+O histórico mostra também as horas DEV estimadas e realizadas de cada chamado. Chamados que já estavam no histórico sem horas são preenchidos nas leituras seguintes.
+
 Para ver o histórico no Excel, clique com o botão direito no painel e escolha **Abrir histórico no Excel**. A planilha é gerada na hora em que você abre, numa pasta só sua, e apagada quando você fecha o painel. Se quiser guardar uma cópia, use **Salvar como** no Excel.
+
+#### Importar chamados antigos
+
+O histórico começa no dia em que você instalou o painel. Para trazer os chamados de antes, clique com o botão direito no painel e escolha **Importar meus chamados da Extranet para o histórico…**.
+
+O painel usa a busca da própria Extranet, com o seu login: chamados em que você é o **Desenvolvedor/Técnico TI**, abertos desde 1º de janeiro deste ano. Os que já estão na fila ou no histórico ficam como estão, então dá para importar de novo sem duplicar nada.
+
+Cada chamado entra com o status e o responsável de agora. As horas, as idas e vindas e o dia em que ele saiu de você são lidos aos poucos, nas leituras seguintes, por até 45 segundos em cada uma. Com centenas de chamados, isso leva algumas horas com o painel aberto.
+
+### Relatório de horas acima do estimado
+
+Botão direito no painel, **Relatório de horas acima do estimado…**. Escolha o período (ou use **Este mês** / **Mês passado**) e clique em **Gerar PDF**.
+
+Entram no relatório os chamados que:
+
+- têm horas DEV **realizadas maiores que as estimadas**; e
+- tiveram a interação **"Alterou Status para: Aguardando Homologação"** em algum dia do período.
+
+O painel abre a página de cada chamado da fila e do histórico para ler as horas e as interações (o cabeçalho mostra o andamento) e, assim que termina, abre o relatório em PDF: folha A4 deitada com os totais do período e, por chamado, código (com link para a Extranet), cliente, título, tipo, horas estimadas, horas realizadas, horas acima do estimado, dia do Aguardando Homologação e data de criação.
+
+Como a planilha do histórico, o PDF é temporário: é gerado numa pasta só sua, fora da pasta do painel, e apagado quando você fecha o painel. Se quiser guardar uma cópia, use **Salvar como** no leitor de PDF. Se o PDF do mesmo período já estiver aberto em um programa que trava o arquivo, feche-o antes de gerar de novo.
+
+Chamado sem estimativa (0,00) e com horas realizadas também entra; a coluna das horas estimadas mostra o zero.
 
 ### Calendário e Gantt
 
@@ -191,8 +217,8 @@ Para ver o histórico no Excel, clique com o botão direito no painel e escolha 
 
 **Calendário** mostra o movimento de cada dia do mês.
 
-- Barra **azul**: chamados que chegaram (pela data de criação).
-- Barra **verde**: chamados entregues (o dia em que saíram da sua fila).
+- Barra **azul**: chamados que chegaram para você, no dia em que você resgatou o chamado ("Resgatou chamado para sua responsabilidade!") ou em que ele foi delegado para você. Chamado que sai e volta conta de novo a cada volta. Sem nenhuma dessas interações, vale a data de criação.
+- Barra **verde**: chamados entregues, a cada vez que saíram de você (delegados para outra pessoa ou fila, ou resgatados por outra pessoa). Se o chamado saiu da fila sem essa interação, vale o dia em que ele saiu da fila.
 - Clique em um dia para ver quais foram. Clique no nome do mês para voltar ao mês atual.
 
 **Gantt** mostra em quais dias cada chamado esteve em execução.
@@ -213,6 +239,9 @@ Clique com o botão direito em qualquer ponto do painel.
 | **Copiar código e título** | Copia código e título, prontos para colar em uma mensagem |
 | **Abrir minha fila na Extranet** | Abre a lista completa no seu navegador |
 | **Abrir histórico no Excel** | Gera a planilha do histórico e abre no Excel |
+| **Relatório de horas acima do estimado…** | Gera o relatório do período escolhido e abre em PDF |
+| **Iniciar execução** / **Pausar execução** | No chamado da fila em que você clicou: faz o mesmo que o botão de iniciar ou pausar da lista da Extranet e lê a fila de novo. Avisa se a Extranet não aceitou |
+| **Importar meus chamados da Extranet para o histórico…** | Traz para o histórico os chamados em que você é o desenvolvedor, abertos desde o início do ano |
 | **Recarregar da Extranet** | O mesmo que o botão Recarregar |
 | **Trocar endereço da Extranet** | Pede o endereço da Extranet de novo |
 | **Voltar para o canto da tela** | Devolve o painel ao canto inferior direito |
@@ -317,6 +346,7 @@ O painel foi feito e revisado com a segurança como prioridade, para ser usado c
 | **Navegador do painel** | Só abre a Extranet. Links, popups e redirecionamentos para outros sites são bloqueados ou vão para o seu navegador padrão, sem a sua sessão. |
 | **Leitura da fila** | Só é aceita se vier de uma página da Extranet, e o código de cada chamado é conferido antes de virar link. |
 | **Planilha do histórico** | Só existe enquanto você usa: é gerada numa pasta só sua e apagada quando o painel fecha. Sai sem fórmulas, então o Excel não executa nada que venha de um chamado. |
+| **Relatório de horas (PDF)** | Temporário como a planilha: gerado numa pasta só sua e apagado quando o painel fecha. É impresso por um navegador à parte, sem a sua sessão da Extranet e sem JavaScript. |
 | **Componentes** | As DLLs do WebView2 são as originais da Microsoft, com assinatura digital. |
 
 ### Seus cuidados
@@ -325,7 +355,7 @@ O painel foi feito e revisado com a segurança como prioridade, para ser usado c
 > Parte da segurança depende de quem usa. Fique atento a estes pontos:
 >
 > - **Baixe só pelas [releases](https://github.com/BrieGabs/fila-chamados-extranet/releases) deste repositório** e, de preferência, confira o SHA-256. O script não é assinado digitalmente.
-> - **Não envie a planilha do histórico para fora da empresa,** nem uma cópia salva pelo **Salvar como**: ela tem nomes de clientes e títulos de chamados, e o painel não apaga cópias salvas.
+> - **Não envie a planilha do histórico nem o PDF do relatório de horas para fora da empresa,** nem uma cópia salva pelo **Salvar como**: eles têm nomes de clientes e títulos de chamados, e o painel não apaga cópias salvas.
 > - **Não publique nem anexe** `diagnostico-extranet.html`, os `.json` da pasta ou prints com dados reais, nem em issues.
 > - **Bloqueie o computador ao sair** (<kbd>Win</kbd> + <kbd>L</kbd>). A cifragem protege contra cópias da pasta, não contra quem usa a sua própria conta do Windows.
 
@@ -380,6 +410,10 @@ Limitações conhecidas:
 
 - O leitor depende da estrutura da página "Minha responsabilidade" da Extranet. Se ela mudar, o painel mostra a última leitura até o leitor ser ajustado.
 - O Gantt só conta os dias em que uma leitura viu o chamado "em execução". Execuções curtas entre duas leituras, ou com o painel fechado, ficam de fora.
+- As horas e o dia em que o chamado chegou para você não estão na lista: a cada leitura o painel abre também a página de cada chamado da fila e dos chamados do histórico ainda sem esses dados, uma de cada vez. O que não couber em 45 segundos fica para a leitura seguinte.
+- As horas do histórico são lidas quando o chamado sai da sua fila e mais uma vez na leitura seguinte. Depois disso, só são atualizadas quando você gera um relatório de horas, que relê todos.
+- O relatório de horas só enxerga os chamados que o painel conhece: a fila atual e o histórico (os que passaram pela sua fila com o painel instalado e os importados). Com histórico grande, ele demora: abre uma página por chamado.
+- Um chamado importado em que você foi só o desenvolvedor, sem nunca ter ficado sob sua responsabilidade, aparece no calendário pela data de criação e não tem dia de entrega.
 - As colunas "Status final" e "Responsável atual" da planilha do histórico ficam em branco: o painel registra quando o chamado saiu da fila, mas não consulta o chamado depois disso.
 
 ### Como lançar uma versão
