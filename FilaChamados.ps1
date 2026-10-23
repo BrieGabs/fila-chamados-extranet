@@ -131,6 +131,7 @@ function Save-Historico($list) {
 function Export-HistoricoCsv($arr, [string]$path) {
     $arr | Select-Object `
             @{ n = 'Código'; e = { Get-TextoCsv $_.codigo } },
+            @{ n = 'Entrou na minha fila'; e = { $cheg = @($_.chegadas | Where-Object { $_ }); if ($cheg.Count) { Get-TextoCsv $cheg[-1] } else { '' } } },
             @{ n = 'Fora da fila desde'; e = { $d = Get-DataLocal $_.saiuEm; if ($d) { $d.ToString('dd/MM/yyyy') } else { '' } } },
             @{ n = 'Status final'; e = { Get-TextoCsv $_.statusFinal } },
             @{ n = 'Responsável atual'; e = { Get-TextoCsv $_.responsavelAtual } },
@@ -1547,6 +1548,8 @@ function New-Row($c, [bool]$novo) {
 function New-HistRow($e) {
     $tip = "$($e.codigo) - $($e.titulo)`n$($e.cliente)`nStatus final: $($e.statusFinal)`nResponsável atual: $($e.responsavelAtual)"
     if ($e.ultimoStatus) { $tip += "`nÚltimo status na sua fila: $($e.ultimoStatus)" }
+    $cheg = @($e.chegadas | Where-Object { $_ })
+    if ($cheg.Count) { $tip += "`nEntrou na sua fila em $($cheg[-1])" }
     $tip += Get-TipHoras $e
     $row = New-RowBorder $e "$tip`nClique para abrir na Extranet"
     $sp = New-Object System.Windows.Controls.StackPanel
