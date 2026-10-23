@@ -14,6 +14,9 @@ Confere ((Get-DataBr '15/09/2026 07:32') -eq [datetime]'2026-09-15 07:32') 'data
 Confere ($null -eq (Get-DataBr '')) 'data vazia'
 Confere ((Get-ComQuem 'FILA DE ATUALIZAÇÃO') -eq 'na fila de atualização') 'responsavel fila'
 Confere ((Get-ComQuem 'FULANA BELTRANA DE TAL') -eq 'com Fulana Beltrana') 'responsavel pessoa'
+Confere ((Get-Horas ' 2,68 ') -eq 2.68 -and $null -eq (Get-Horas '') -and $null -eq (Get-Horas '0,00') -and $null -eq (Get-Horas 'x')) 'horas: virgula decimal; vazio, zero e ilegivel sem valor'
+Confere ((Get-TextoHoras '1,50') -eq '1,50 h' -and (Get-TextoHoras '') -eq '-') 'horas: texto'
+Confere ((Get-TipHoras ([pscustomobject]@{ horasEstimadas = '1,50'; horasRealizadas = '' })) -match '1,50 h estimadas, - realizadas' -and (Get-TipHoras ([pscustomobject]@{ codigo = '1' })) -eq '') 'horas: dica so quando ha horas'
 
 # ---------------------------------------------------------------- seguranca
 Confere ((Get-TextoCsv '=HYPERLINK("x")') -eq "'=HYPERLINK(`"x`")" -and (Get-TextoCsv '@SUM(1)') -eq "'@SUM(1)" -and (Get-TextoCsv 'Erro ao salvar') -eq 'Erro ao salvar') 'csv: texto com cara de formula vira texto'
@@ -36,6 +39,99 @@ $csv = Get-Content -LiteralPath $planilha -Raw -Encoding UTF8
 Confere ($csv -match "'=1\+1" -and $csv -match 'Incidência' -and $csv -match 'Título') 'planilha: gerada na hora, sem formula e com acentos'
 Remove-Item -LiteralPath $planilha
 
+# ---------------------------------------------------------------- historico
+$HistFile = Join-Path $env:TEMP 'FilaChamadosTeste-historico.json'
+Remove-Item -LiteralPath $HistFile -ErrorAction SilentlyContinue
+$antes = @(
+    [pscustomobject]@{ codigo = '1'; titulo = 'fica'; horasEstimadas = '1,00'; horasRealizadas = '0,50' },
+    [pscustomobject]@{ codigo = '2'; titulo = 'saiu com leitura'; horasEstimadas = '2,00'; horasRealizadas = '1,00' },
+    [pscustomobject]@{ codigo = '3'; titulo = 'saiu sem leitura'; horasEstimadas = '3,00'; horasRealizadas = '2,50' })
+Update-Historico $antes @($antes[0]) @([pscustomobject]@{ codigo = '2'; horasEstimadas = '2,00'; horasRealizadas = '3,25' }) '2026-09-24T17:55:00.000Z'
+$h = Get-Historico
+Confere ($h.Count -eq 2) "historico: os dois que sairam (veio $($h.Count))"
+$h2 = $h | Where-Object { $_.codigo -eq '2' }; $h3 = $h | Where-Object { $_.codigo -eq '3' }
+Confere ($h2.horasRealizadas -eq '3,25' -and $h2.titulo -eq 'saiu com leitura') 'historico: horas lidas na saida da fila'
+Confere ($h3.horasEstimadas -eq '3,00' -and $h3.horasRealizadas -eq '2,50') 'historico: sem leitura na saida, valem as horas da ultima leitura na fila'
+Confere ((Get-Content -LiteralPath $HistFile -Raw).StartsWith('DPAPI:')) 'historico: gravado cifrado, com as horas dentro'
+Export-HistoricoCsv @([pscustomobject]@{ codigo = '2'; saiuEm = '2026-09-24T17:55:00.000Z'; titulo = 'saiu com leitura'; horasEstimadas = '=2+2'; horasRealizadas = '3,25' }) $planilha
+$csv = Get-Content -LiteralPath $planilha -Raw -Encoding UTF8
+Confere ($csv -match 'Horas DEV estimadas";"Horas DEV realizadas' -and $csv -match '"3,25"' -and $csv -match "'=2\+2") 'planilha: colunas de horas, sem formula'
+Remove-Item -LiteralPath $planilha
+Export-HistoricoCsv @([pscustomobject]@{ codigo = '7'; saiuEm = '2026-10-12T15:00:00.000Z'; chegadas = @('02/10/2026', '09/10/2026') }, [pscustomobject]@{ codigo = '8'; saiuEm = '2026-10-12T15:00:00.000Z' }) $planilha
+$csv = @(Import-Csv -LiteralPath $planilha -Delimiter ';' -Encoding UTF8)
+Confere ($csv[0].'Entrou na minha fila' -eq '09/10/2026' -and $csv[1].'Entrou na minha fila' -eq '') "planilha: entrou na fila pela ultima chegada, vazio sem chegada (veio '$($csv[0].'Entrou na minha fila')')"
+Remove-Item -LiteralPath $planilha
+$state = [pscustomobject]@{ usuario = 'ANA LIMA (EQUIPE 2)' }
+Update-HorasHistorico @([pscustomobject]@{ codigo = '3'; horasEstimadas = '3,00'; horasRealizadas = '5,75'; transferencias = @([pscustomobject]@{ dia = '05/09/2026'; para = 'ANA LIMA SOUZA' }) }, [pscustomobject]@{ codigo = '9'; horasEstimadas = '1,00'; horasRealizadas = '1,00' })
+$h = Get-Historico
+$h2 = $h | Where-Object { $_.codigo -eq '2' }; $h3 = $h | Where-Object { $_.codigo -eq '3' }
+Confere ($h.Count -eq 2 -and $h3.horasRealizadas -eq '5,75' -and $h3.horasLidasEm -and $h3.titulo -eq 'saiu sem leitura') 'historico: pagina lida depois atualiza as horas de quem ja saiu e marca como lida'
+Confere ((@($h3.chegadas) -join ',') -eq '05/09/2026' -and @($h3.saidas).Count -eq 0 -and $h3.PSObject.Properties.Name -notcontains 'chegou') "historico: pagina lida depois traz as idas e vindas do chamado com o usuario logado (veio '$(@($h3.chegadas) -join ',')')"
+Confere ($h2.horasRealizadas -eq '3,25' -and -not $h2.horasLidasEm) 'historico: quem nao teve a pagina lida fica como estava'
+Confere ((Get-Codigos @('12', $null, 'x', 34)) -eq '12,34') 'codigos para o leitor: so numeros'
+
+# importacao: os chamados em que voce e o desenvolvedor entram no historico, menos os da fila e os que ja estao la
+function Stop-Busca([string]$aviso) { $script:avisoTeste = $aviso }   # sem painel aberto no teste
+$state = [pscustomobject]@{ usuario = 'ANA LIMA (EQUIPE 2)'; ultimosCodigos = @('7') }
+$script:importacao = @{ ini = [datetime]'2026-01-01'; etapa = 'lendo' }
+Import-Historico @(
+    [pscustomobject]@{ codigo = '7'; titulo = 'na fila'; status = 'Em Desenvolvimento' },
+    [pscustomobject]@{ codigo = '2'; titulo = 'ja no historico'; status = 'Homologado' },
+    [pscustomobject]@{ codigo = '8'; titulo = 'antigo'; status = 'Homologado'; cliente = 'CLIENTE EXEMPLO A'; categoria = 'SISTEMA WEB - INCIDÊNCIA'; criacao = '05/02/2026'; responsavel = 'BRUNO COSTA (EQUIPE 1)' },
+    [pscustomobject]@{ codigo = '8'; titulo = 'repetido'; status = 'Homologado' },
+    [pscustomobject]@{ codigo = 'x9'; titulo = 'codigo invalido' })
+$h = Get-Historico
+$h8 = @($h | Where-Object { $_.codigo -eq '8' })
+Confere ($h.Count -eq 3 -and $h8.Count -eq 1 -and $h8[0].titulo -eq 'antigo' -and $h8[0].importado) "importacao: so o chamado novo entra, uma vez (veio $($h.Count) no historico)"
+Confere ($h8[0].statusFinal -eq 'Homologado' -and $h8[0].responsavelAtual -eq 'BRUNO COSTA (EQUIPE 1)' -and $h8[0].tipo -eq 'Incidência' -and $h8[0].url -eq ($ChamadoUrl + '8') -and -not $h8[0].saiuEm) 'importacao: status e responsavel da busca; o dia em que saiu fica para a leitura da pagina'
+Confere ($script:avisoTeste -match 'Importei para o histórico 1 de 5 chamados' -and $script:avisoTeste -match '01/01/2026') "importacao: aviso com quantos entraram (veio '$($script:avisoTeste)')"
+Update-HorasHistorico @([pscustomobject]@{ codigo = '8'; horasEstimadas = ''; horasRealizadas = ''; transferencias = @([pscustomobject]@{ dia = '10/02/2026'; para = 'ANA LIMA SOUZA' }, [pscustomobject]@{ dia = '20/02/2026'; para = 'FILA DE TESTE' }) })
+$h = Get-Historico
+$h8 = @($h | Where-Object { $_.codigo -eq '8' })[0]
+Confere ((Get-DataLocal $h8.saiuEm).ToString('dd/MM/yyyy') -eq '20/02/2026' -and (@($h8.chegadas) -join ',') -eq '10/02/2026') "importacao: a pagina lida depois traz o dia em que o chamado saiu de voce (veio '$($h8.saiuEm)')"
+Update-HorasHistorico @([pscustomobject]@{ codigo = '2'; transferencias = @([pscustomobject]@{ dia = '10/02/2026'; para = 'ANA LIMA SOUZA' }, [pscustomobject]@{ dia = '20/02/2026'; para = 'FILA DE TESTE' }) })
+$h = Get-Historico
+Confere ((@($h | Where-Object { $_.codigo -eq '2' })[0].saiuEm) -eq '2026-09-24T17:55:00.000Z') 'importacao: quem ja tinha dia de saida pela fila fica com ele'
+Import-Historico @([pscustomobject]@{ codigo = '8'; titulo = 'antigo'; status = 'Homologado' })
+Confere ($script:avisoTeste -match 'Nenhum chamado novo') "importacao: de novo, nada entra em dobro (veio '$($script:avisoTeste)')"
+$script:importacao = $null
+Remove-Item -LiteralPath $HistFile
+
+# iniciar/pausar execucao: o mesmo link do botao da lista da Extranet, e o aviso quando ela nao aceita
+Confere ((Get-UrlAcao @{ codigo = '100001'; iniciar = $true }) -eq ($ChamadoUrl + '100001&inicia_execucao=S') -and (Get-UrlAcao @{ codigo = '100001'; iniciar = $false }) -eq ($ChamadoUrl + '100001&pausa_execucao=S') -and $null -eq (Get-UrlAcao @{ codigo = '1x'; iniciar = $true })) 'execucao: link de iniciar e de pausar, so com codigo numerico'
+$script:acaoFeita = @{ codigo = '100001'; iniciar = $true }
+Confere ((Get-AvisoAcao @([pscustomobject]@{ codigo = '100001'; emExecucao = $true })) -eq '' -and $null -eq $script:acaoFeita) 'execucao: iniciou, sem aviso'
+$script:acaoFeita = @{ codigo = '100001'; iniciar = $true }
+Confere ((Get-AvisoAcao @([pscustomobject]@{ codigo = '100001'; emExecucao = $false })) -match 'não iniciou a execução do 100001') 'execucao: a Extranet nao iniciou, avisa'
+$script:acaoFeita = @{ codigo = '100001'; iniciar = $false }
+Confere ((Get-AvisoAcao @()) -match 'não está mais na sua fila') 'execucao: chamado que saiu da fila, avisa'
+Confere ((Get-AvisoAcao @([pscustomobject]@{ codigo = '100001'; emExecucao = $false })) -eq '') 'execucao: sem acao pedida, sem aviso'
+
+# ---------------------------------------------------------------- relatorio de horas
+$det = @{ '1' = [pscustomobject]@{ cliente = 'C1'; titulo = 'T1'; tipo = 'Incidência'; criacao = '01/09/2026' } }
+$pags = @(
+    [pscustomobject]@{ codigo = '1'; horasEstimadas = '1,50'; horasRealizadas = '2,68'; homologacoes = @('20/09/2026', '08/10/2026', '08/10/2026') },   # entra
+    [pscustomobject]@{ codigo = '2'; horasEstimadas = '4,00'; horasRealizadas = '2,00'; homologacoes = @('08/10/2026') },                             # realizado abaixo do estimado
+    [pscustomobject]@{ codigo = '3'; horasEstimadas = '1,00'; horasRealizadas = '2,00'; homologacoes = @('30/09/2026') },                             # homologacao fora do periodo
+    [pscustomobject]@{ codigo = '4'; horasEstimadas = '1,00'; horasRealizadas = '2,00'; homologacoes = @() },                                         # nunca foi para homologacao
+    [pscustomobject]@{ codigo = '5'; horasEstimadas = '0,00'; horasRealizadas = '9,73'; homologacoes = @('31/10/2026') })                             # sem estimativa: entra
+$l = @(Get-LinhasRelatorio $pags $det ([datetime]'2026-10-01') ([datetime]'2026-10-31'))
+Confere ((@($l | ForEach-Object { $_.codigo }) -join ',') -eq '1,5') "relatorio: so realizado acima do estimado com homologacao no periodo (vieram $(@($l | ForEach-Object { $_.codigo }) -join ','))"
+Confere ([Math]::Round($l[0].acima, 2) -eq 1.18 -and $l[0].homologacao -eq '08/10/2026' -and $l[0].titulo -eq 'T1' -and $l[0].url -eq ($ChamadoUrl + '1')) 'relatorio: diferenca, dias do periodo sem repetir, detalhes'
+Confere ($l[1].estimadas -eq 0 -and $l[1].realizadas -eq 9.73 -and $l[1].titulo -eq '') 'relatorio: chamado sem estimativa entra; sem detalhes fica em branco'
+$l[0].titulo = 'Erro em <b>A & B</b><script>alert(1)</script>'
+$html = Get-HtmlRelatorio $l ([datetime]'2026-10-01') ([datetime]'2026-10-31') 'Faltou o 9.'
+Confere ($html -match 'de 01/10/2026 a 31/10/2026' -and $html -match '<b>2</b>chamados' -and $html -match '<b>1,50 h</b>estimadas' -and $html -match '<b class="x">\+10,91 h</b>') 'relatorio em HTML: periodo e totais'
+Confere ($html -match ('<a href="' + [regex]::Escape($ChamadoUrl) + '1">1</a>') -and $html -match '<td class="n x">\+1,18</td>' -and $html -match 'Faltou o 9\.') 'relatorio em HTML: link do chamado, horas com virgula, aviso'
+Confere ($html -match 'Erro em &lt;b&gt;A &amp; B&lt;/b&gt;&lt;script&gt;' -and $html -notmatch '<script') 'relatorio em HTML: titulo do chamado entra como texto, nunca como HTML ou script'
+$RelDir = Join-Path $env:TEMP 'FilaChamadosTeste-relatorios'
+[void](New-Item -ItemType Directory -Force -Path $RelDir)
+Set-Content -LiteralPath (Join-Path $RelDir 'relatorio-horas-2026-10-01-a-2026-10-31.pdf') -Value 'pdf'
+Set-Content -LiteralPath (Join-Path $RelDir 'outro.txt') -Value 'fica'
+Remove-RelatoriosPdf
+Confere (-not (Test-Path -LiteralPath (Join-Path $RelDir 'relatorio-horas-2026-10-01-a-2026-10-31.pdf')) -and (Test-Path -LiteralPath (Join-Path $RelDir 'outro.txt'))) 'relatorio: o PDF temporario e apagado, e so ele'
+Remove-Item -LiteralPath $RelDir -Recurse -Force
+
 # ---------------------------------------------------------------- calendario
 $fila = @([pscustomobject]@{ codigo = '1'; criacao = '23/06/2026' }, [pscustomobject]@{ codigo = '2'; criacao = '' })
 $hist = @([pscustomobject]@{ codigo = '3'; criacao = '08/09/2026'; saiuEm = '2026-09-24T17:55:00.000Z' })
@@ -44,6 +140,31 @@ Confere ($ev.Count -eq 3) "calendario: 3 eventos (veio $($ev.Count))"
 Confere (@($ev | Where-Object { $_.evento -eq 'chegou' -and $_.dia -eq [datetime]'2026-06-23' }).Count -eq 1) 'calendario: chegou pela criacao'
 Confere (@($ev | Where-Object { $_.evento -eq 'chegou' -and $_.item.codigo -eq '3' }).Count -eq 1) 'calendario: historico tambem chegou'
 Confere (@($ev | Where-Object { $_.evento -eq 'entregue' -and $_.dia -eq (Get-DataLocal '2026-09-24T17:55:00.000Z').Date }).Count -eq 1) 'calendario: entregue pela saida da fila'
+# chamado que foi e voltou: duas chegadas e uma saida, ainda na fila
+$foiVoltou = [pscustomobject]@{ codigo = '4'; criacao = '01/10/2026'; chegadas = @('07/10/2026', '09/10/2026'); saidas = @('08/10/2026') }
+# saiu da fila sem troca de responsavel (encerrado): a saida e o dia em que saiu da fila
+$encerrado = [pscustomobject]@{ codigo = '5'; criacao = '01/10/2026'; chegadas = @('02/10/2026'); saidas = @(); saiuEm = '2026-10-05T15:00:00.000Z' }
+# saiu por delegacao: a saida vem da interacao, e o dia em que a fila notou nao conta de novo
+$delegado = [pscustomobject]@{ codigo = '6'; criacao = '01/10/2026'; chegadas = @('02/10/2026'); saidas = @('03/10/2026'); saiuEm = '2026-10-06T15:00:00.000Z' }
+$ev = @(Get-EventosCalendario @($foiVoltou) @($encerrado, $delegado))
+$dias = { param($cod, $evento) (@($ev | Where-Object { $_.item.codigo -eq $cod -and $_.evento -eq $evento } | ForEach-Object { $_.dia.ToString('dd/MM') }) -join ',') }
+Confere ((& $dias '4' 'chegou') -eq '07/10,09/10' -and (& $dias '4' 'entregue') -eq '08/10') 'calendario: chamado que vai e volta conta cada chegada e cada saida'
+Confere ((& $dias '5' 'chegou') -eq '02/10' -and (& $dias '5' 'entregue') -eq (Get-DataLocal '2026-10-05T15:00:00.000Z').ToString('dd/MM')) 'calendario: saiu da fila sem troca de responsavel, vale o dia em que saiu'
+Confere ((& $dias '6' 'entregue') -eq '03/10') 'calendario: saida pela delegacao nao conta duas vezes'
+$pgc = [pscustomobject]@{ transferencias = @(
+        [pscustomobject]@{ dia = '06/10/2026'; para = 'BRUNO COSTA RAMOS' },
+        [pscustomobject]@{ dia = '07/10/2026'; para = 'CARLOS EDUARDO PEREIRA DOS SANTOS' },
+        [pscustomobject]@{ dia = '08/10/2026'; para = 'DANIELA DO CARMO SANTOS' },
+        [pscustomobject]@{ dia = '09/10/2026'; para = 'CARLOS EDUARDO PEREIRA DOS SANTOS' },
+        [pscustomobject]@{ dia = '10/10/2026'; para = 'FILA DE TESTE' }) }
+$mov = Get-Movimentos $pgc 'CARLOS EDUARDO (EQUIPE 1)'
+Confere ((@($mov.chegadas) -join ',') -eq '07/10/2026,09/10/2026' -and (@($mov.saidas) -join ',') -eq '08/10/2026,10/10/2026') "movimentos: cada vez que o chamado veio para voce e cada vez que saiu (veio $(@($mov.chegadas) -join ',') / $(@($mov.saidas) -join ','))"
+$mov = Get-Movimentos $pgc 'daniela santos'
+Confere ((@($mov.chegadas) -join ',') -eq '08/10/2026' -and (@($mov.saidas) -join ',') -eq '09/10/2026') 'movimentos: palavras do nome na ordem, sem ligar para maiusculas'
+$mov = Get-Movimentos ([pscustomobject]@{ transferencias = @(@($pgc.transferencias)[1], [pscustomobject]@{ dia = '07/10/2026'; para = 'CARLOS EDUARDO PEREIRA DOS SANTOS' }) }) 'CARLOS EDUARDO'
+Confere ((@($mov.chegadas) -join ',') -eq '07/10/2026' -and @($mov.saidas).Count -eq 0) 'movimentos: delegar para quem ja esta com o chamado nao e chegada nova'
+$vazios = @((Get-Movimentos $pgc 'CARLOS EDU'), (Get-Movimentos $pgc 'EDUARDO PEREIRA'), (Get-Movimentos $pgc '(EQUIPE 1)'), (Get-Movimentos ([pscustomobject]@{ codigo = '1' }) 'CARLOS'))
+Confere (@($vazios | Where-Object { @($_.chegadas).Count -or @($_.saidas).Count }).Count -eq 0) 'movimentos: outro nome, nome vazio ou pagina sem trocas de responsavel ficam sem idas e vindas'
 $ExecFile = Join-Path $env:TEMP 'FilaChamadosTeste-execucao.json'
 Remove-Item -LiteralPath $ExecFile -ErrorAction SilentlyContinue
 $lida = @([pscustomobject]@{ codigo = '1'; emExecucao = $true }, [pscustomobject]@{ codigo = '2'; emExecucao = $false })
@@ -62,8 +183,28 @@ Confere ($per[1].item.codigo -eq '3' -and $per[1].trechos[0].ini -eq [datetime]'
 
 # ---------------------------------------------------------------- extranet
 # Copia simplificada da lista "Minha responsabilidade" (mesmos ids da pagina real)
+# O fetch de mentira faz as vezes da pagina de cada chamado (Chamado.aspx): a do 100002 nao abre (cai no login);
+# 100003 saiu da fila, 100004 esta no historico sem horas. A interacao 0 e um comentario que so cita a troca de status
 $pagina = @'
-<html><body><div><b>&nbsp; Lista de Chamados
+<html><head><script>
+window.filaAnteriores = [100001, 100003];
+window.filaHistorico = [100004];
+const paginaChamado = c => `<input id="ContentPlaceHolder1_hddCodigo" value="${c}">
+  <input id="ContentPlaceHolder1_txtHorasCodes" value=" 1,50 "><input id="ContentPlaceHolder1_txtHorasCodesRealizada" value="${c === '100003' ? '4,00' : '2,68'}">
+  <blockquote id="ContentPlaceHolder1_rptInteracoes_trInteracao_0"><h4>Favor conferir. Alterou Status para: Aguardando Homologação</h4></blockquote>
+  <input id="ContentPlaceHolder1_rptInteracoes_hddData_0" value="01/10/2026 09:00:00">
+  <blockquote id="ContentPlaceHolder1_rptInteracoes_trInteracao_1"><h4><i class="glyphicon glyphicon-pencil"></i> Alterou Status para: Aguardando Homologação</h4></blockquote>
+  <input id="ContentPlaceHolder1_rptInteracoes_hddData_1" value="08/10/2026 14:20:53">
+  <blockquote id="ContentPlaceHolder1_rptInteracoes_trInteracao_2"><h4><i class="glyphicon glyphicon-pencil"></i> Alterou Status para: Homologado</h4></blockquote>
+  <input id="ContentPlaceHolder1_rptInteracoes_hddData_2" value="08/10/2026 16:38:38">
+  <blockquote id="ContentPlaceHolder1_rptInteracoes_trInteracao_3"><div class="int-header"><div class="inline">09/10/2026 08:00:00 - <b class="active">ANA LIMA SOUZA </b></div></div>
+    <h4><i class="glyphicon glyphicon-retweet"></i> Resgatou chamado para sua responsabilidade!</h4></blockquote>
+  <input id="ContentPlaceHolder1_rptInteracoes_hddData_3" value="09/10/2026 08:00:00">
+  <blockquote id="ContentPlaceHolder1_rptInteracoes_trInteracao_4"><div class="int-header"><div class="inline">10/10/2026 09:30:00 - <b class="active">ANA LIMA SOUZA </b><br><span><b>2h </b> úteis em atividade!</span></div></div>
+    <h4><i class="glyphicon glyphicon-user"></i> Chamado delegado para: FILA DE TESTE</h4></blockquote>
+  <input id="ContentPlaceHolder1_rptInteracoes_hddData_4" value="10/10/2026 09:30:00">`;
+window.fetch = async u => { const c = u.split('=').pop(); return { ok: true, text: async () => (c === '100002' ? '<p>Login</p>' : paginaChamado(c)) }; };
+</script></head><body><div><b>&nbsp; Lista de Chamados
   (2)</b></div>
 <table class="table table-bordered datatable"><tbody><tr><td><a>Código</a></td><td><a>Cliente</a></td><td><a>Status</a></td><td><a>Versão</a></td><td><a>Descritivo</a></td></tr></tbody><tbody>
 <tr id="ContentPlaceHolder1_rptChamados_divChamado_0">
@@ -94,9 +235,12 @@ Add-Type -Path (Join-Path $wv2 'Microsoft.Web.WebView2.Wpf.dll')
 [Microsoft.Web.WebView2.Core.CoreWebView2Environment]::SetLoaderDllFolderPath($wv2)
 $script:js = $ast.Find({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] -and $args[0].Left.Extent.Text -eq '$ScriptFila' }, $true).Right.Expression.Value
 
-# roda $ScriptFila na pagina dentro de um WebView2 fora da tela e devolve o JSON que ele mandar
-function Ler-Pagina([string]$h) {
-    $script:html = $h; $script:resp = $null; $script:progressos = 0
+$script:jsImportacao = $ast.Find({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] -and $args[0].Left.Extent.Text -eq '$ScriptImportacao' }, $true).Right.Expression.Value
+
+# roda $ScriptFila (ou outro script, em $codigo) na pagina dentro de um WebView2 fora da tela e devolve o recado (JSON) que ele mandar;
+# $pedido = JavaScript que roda antes (pede o relatorio de horas: ai sao varios recados - a fila, o andamento e, no fim, as paginas)
+function Ler-Pagina([string]$h, [string]$pedido = '', [string]$codigo = $script:js) {
+    $script:html = $h; $script:resp = @(); $script:progressos = 0; $script:pedido = $pedido; $script:codigoJs = $codigo
     $script:jan = New-Object System.Windows.Window
     $script:jan.Width = 300; $script:jan.Height = 200; $script:jan.Left = -5000; $script:jan.ShowInTaskbar = $false; $script:jan.ShowActivated = $false
     $script:wv = New-Object Microsoft.Web.WebView2.Wpf.WebView2
@@ -104,12 +248,13 @@ function Ler-Pagina([string]$h) {
     $cp.UserDataFolder = Join-Path $env:TEMP 'FilaChamadosTeste'
     $script:wv.CreationProperties = $cp
     $script:wv.Add_CoreWebView2InitializationCompleted({ $script:wv.CoreWebView2.NavigateToString($script:html) })
-    $script:wv.Add_NavigationCompleted({ [void]$script:wv.ExecuteScriptAsync($script:js) })
+    $script:wv.Add_NavigationCompleted({ [void]$script:wv.ExecuteScriptAsync("$($script:pedido)`n$($script:codigoJs)") })
     $script:wv.Add_WebMessageReceived({
             param($s, $e)
             $m = $e.TryGetWebMessageAsString() | ConvertFrom-Json
             if ($m.progresso) { $script:progressos++; return }   # andamento da leitura em varias paginas: espera a resposta final
-            $script:resp = $m; $script:jan.Close()
+            $script:resp += $m
+            if (-not $m.ok -or -not $script:pedido -or @($m.PSObject.Properties.Name | Where-Object { $_ -in 'relatorio', 'importacao', 'postback' }).Count) { $script:jan.Close() }
         })
     $script:jan.Content = $script:wv
     $script:jan.Add_ContentRendered({ [void]$script:wv.EnsureCoreWebView2Async($null) })
@@ -121,14 +266,24 @@ function Ler-Pagina([string]$h) {
     return $script:resp
 }
 
-$r = Ler-Pagina $pagina
+$r = @(Ler-Pagina $pagina)[0]
 Confere ($r.ok -and @($r.chamados).Count -eq 2) "leitor: 2 chamados (erro: $($r.erro))"
 $a = $r.chamados[0]; $b = $r.chamados[1]
 Confere ($a.codigo -eq '100001' -and $a.status -eq 'Em Desenvolvimento' -and $a.diasStatus -eq 0 -and $a.cliente -eq 'CLIENTE EXEMPLO A - UNIDADE 1') 'leitor: codigo, status, cliente'
 Confere ($a.versao -eq '9.9.9' -and $a.dataPrevista -eq '30/07/2026' -and $a.criacao -eq '23/06/2026' -and $a.prioridade -eq '1') 'leitor: versao, prevista, criacao, prioridade'
 Confere ($a.titulo -eq 'Incidência na abertura' -and $a.categoria -eq 'APP (PRODUTO - INCIDÊNCIA)' -and $a.emExecucao) "leitor: titulo sem maiusculas do CSS, categoria, em execucao (veio '$($a.titulo)' / '$($a.categoria)')"
 Confere ($b.codigo -eq '100002' -and $b.diasStatus -eq 24 -and $b.versao -eq '' -and $b.dataPrevista -eq '' -and -not $b.emExecucao -and $b.categoria -eq 'SISTEMA WEB - Consultoria') 'leitor: chamado sem versao/prevista'
-$r = Ler-Pagina ($pagina.Replace('(2)', '(3)'))
+$pg = @($r.detalhes)
+Confere ((@($pg | ForEach-Object { $_.codigo }) -join ',') -eq '100001,100003,100004') "leitor: pagina da fila, de quem saiu e do historico sem horas; a que nao abriu fica de fora (vieram $(@($pg | ForEach-Object { $_.codigo }) -join ','))"
+Confere ($pg[0].horasEstimadas -eq '1,50' -and $pg[0].horasRealizadas -eq '2,68' -and $pg[1].horasRealizadas -eq '4,00') "leitor: horas da pagina do chamado (veio '$($pg[0].horasEstimadas)' / '$($pg[0].horasRealizadas)')"
+Confere ((@($pg[0].homologacoes) -join ',') -eq '08/10/2026') "leitor: dia do Aguardando Homologacao, sem contar o comentario que cita a frase (veio '$(@($pg[0].homologacoes) -join ',')')"
+$tr = @($pg[0].transferencias)
+Confere ($tr.Count -eq 2 -and $tr[0].dia -eq '09/10/2026' -and $tr[0].para -eq 'ANA LIMA SOUZA' -and $tr[1].dia -eq '10/10/2026' -and $tr[1].para -eq 'FILA DE TESTE') "leitor: trocas de responsavel - quem resgatou e para quem foi delegado (vieram $(@($tr | ForEach-Object { "$($_.dia) $($_.para)" }) -join '; '))"
+Confere ($a.responsavel -eq 'X') "leitor: responsavel da linha da lista (veio '$($a.responsavel)')"
+$m = @(Ler-Pagina $pagina 'window.filaRelatorio = [100004, 100005];')
+Confere ($m.Count -eq 4 -and @($m[0].chamados).Count -eq 2 -and $m[1].andamento -eq '1 de 2' -and $m[2].andamento -eq '2 de 2') "leitor: com relatorio pedido manda a fila, o andamento e as paginas (vieram $($m.Count) recados)"
+Confere ((@($m[3].relatorio | ForEach-Object { $_.codigo }) -join ',') -eq '100001,100003,100004,100005') "leitor: relatorio com a pagina de todos os que abriram (vieram $(@($m[3].relatorio | ForEach-Object { $_.codigo }) -join ','))"
+$r = @(Ler-Pagina ($pagina.Replace('(2)', '(3)')))[0]
 Confere (-not $r.ok -and $r.erro -match '2 de 3' -and $r.html) 'leitor: lista incompleta (paginada) e recusada e manda a pagina'
 
 # ---------------------------------------------------------------- lista em varias paginas
@@ -173,6 +328,29 @@ $r = Ler-Pagina ($pagina.Replace('(2)', '(3)').Replace('</body>', '<a id="Conten
 Confere (-not $r.ok -and $r.erro -match 'trocar de página' -and $r.html) "paginas: sem AJAX da Extranet e recusado (erro: $($r.erro))"
 $r = Ler-Pagina ($pagina.Replace('(2)', '(0)') -replace '(?s)<tr id="ContentPlaceHolder1_rptChamados_divChamado_.*?</tr>', '')
 Confere ($r.ok -and @($r.chamados).Count -eq 0) "fila vazia: aceita (erro: $($r.erro))"
+
+# ---------------------------------------------------------------- importacao: busca por desenvolvedor
+# Filtro da lista como na Extranet: o Responsavel vem marcado com voce (nome inteiro) e o Desenvolvedor escreve o nome curto.
+# O __doPostBack de mentira devolve o que o script deixou no filtro, no lugar de recarregar a pagina
+$filtro = @'
+<select id="ContentPlaceHolder1_ddlResponsavel"><option value="">SELECIONE</option><option value="31" selected>ANA LIMA SOUZA</option><option value="32">BRUNO COSTA RAMOS</option></select>
+<select id="ContentPlaceHolder1_ddlDesenvolvedor"><option value="">SELECIONE</option><option value="41">ANA PAULA - EQUIPE 1</option><option value="42">ANA LIMA - EQUIPE 2</option><option value="43">BRUNO COSTA - EQUIPE 1</option></select>
+<input id="ContentPlaceHolder1_txtDataIni" type="text"><input id="ContentPlaceHolder1_txtDataFim" type="text">
+<script>
+  window.__doPostBack = alvo => window.chrome.webview.postMessage(JSON.stringify({ ok: true, postback: alvo,
+    desenvolvedor: document.getElementById('ContentPlaceHolder1_ddlDesenvolvedor').value, responsavel: document.getElementById('ContentPlaceHolder1_ddlResponsavel').value,
+    ini: document.getElementById('ContentPlaceHolder1_txtDataIni').value, fim: document.getElementById('ContentPlaceHolder1_txtDataFim').value }));
+</script></body>
+'@
+$m = @(Ler-Pagina ($pagina.Replace('</body>', $filtro)) "window.filaImportar = { etapa: 'buscar', ini: '01/01/2026', fim: '14/10/2026' };" $script:jsImportacao)
+$pb = @($m | Where-Object { $_.postback })[0]
+Confere ($pb.postback -eq 'ctl00$ContentPlaceHolder1$lnkProcurar' -and $pb.desenvolvedor -eq '42' -and $pb.responsavel -eq '' -and $pb.ini -eq '01/01/2026' -and $pb.fim -eq '14/10/2026') "importacao: filtro com voce como desenvolvedor, sem responsavel, no periodo (veio $($pb | ConvertTo-Json -Compress))"
+$m = @(Ler-Pagina ($pagina.Replace('</body>', $filtro.Replace('<option value="31" selected>', '<option value="31">'))) "window.filaImportar = { etapa: 'buscar', ini: '01/01/2026', fim: '14/10/2026' };" $script:jsImportacao)
+Confere (-not $m[0].ok -and $m[0].erro -match 'não achei você') "importacao: sem saber quem e voce, nao busca nada (erro: $($m[0].erro))"
+$r = @(Ler-Pagina (Pagina-Paginada 'ok') "window.filaImportar = { etapa: 'ler' };" $script:jsImportacao)[0]
+Confere ($r.ok -and (@($r.importacao | ForEach-Object { $_.codigo }) -join ',') -eq '100001,100002,100003' -and $r.importacao[0].responsavel -eq 'X' -and $r.importacao[0].status -eq 'Em Desenvolvimento' -and $script:progressos -eq 1) "importacao: junta todas as paginas do resultado da busca (erro: $($r.erro))"
+$r = @(Ler-Pagina (Pagina-Paginada 'repete') "window.filaImportar = { etapa: 'ler' };" $script:jsImportacao)[0]
+Confere (-not $r.ok -and $r.erro -match 'repetiu') "importacao: pagina repetida e recusada (erro: $($r.erro))"
 
 # ---------------------------------------------------------------- filtro por status
 $fila = @('Em Análise', 'Novo', 'Em Análise', 'Aguardando Cliente', 'Novo', 'Em Análise') | ForEach-Object { [pscustomobject]@{ status = $_ } }

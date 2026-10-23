@@ -16,6 +16,20 @@ O projeto segue o [versionamento semântico](https://semver.org/lang/pt-BR/) (`M
 - O resultado da análise de segurança (PSScriptAnalyzer) vai para a aba Security do repositório (Code Scanning).
 - O branch `main` passou a ser protegido: mudanças só entram por pull request, com os testes e a análise de segurança aprovados.
 
+### Alterado
+
+- Calendário: "chegou" passa a ser cada vez que o chamado veio para você (resgate ou delegação) e "entregue", cada vez que saiu de você, lidos nas interações do chamado. Chamado que sai e volta conta mais de uma vez. Sem essas interações, continuam valendo a data de criação e o dia em que o chamado saiu da fila.
+- A cada leitura, o painel abre também a página de cada chamado da fila, uma de cada vez e por até 45 segundos, para ler as horas e as interações.
+- Filtro por status alinhado à esquerda, na mesma borda dos chamados, em vez de um bloco centralizado com as linhas desencontradas.
+
+### Adicionado
+
+- Horas DEV estimadas e realizadas de cada chamado, na fila, no histórico e na planilha do histórico. O realizado fica em vermelho quando passa do estimado.
+- Relatório de horas acima do estimado, no menu do botão direito: chamados com horas realizadas maiores que as estimadas que passaram por "Aguardando Homologação" no período escolhido, em PDF. O PDF é temporário como a planilha do histórico e é impresso por um navegador à parte, sem a sessão da Extranet e sem JavaScript.
+- Importar para o histórico, no menu do botão direito, os chamados em que você é o desenvolvedor, abertos desde o início do ano, pela busca da própria Extranet. Horas e idas e vindas de cada um são lidas aos poucos, nas leituras seguintes.
+- Iniciar e pausar a execução de um chamado da fila pelo menu do botão direito, com o mesmo link do botão da lista da Extranet. O painel lê a fila de novo e avisa se a Extranet não aceitou.
+- Dia em que o chamado entrou na sua fila (a última vez que veio para você, por resgate ou delegação) ao passar o mouse sobre o chamado no histórico e na coluna "Entrou na minha fila" da planilha do histórico.
+
 ## [1.1.0] - 2026-10-10
 
 ### Corrigido
