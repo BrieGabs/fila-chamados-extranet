@@ -68,6 +68,13 @@ Não é preciso instalar nenhum programa. O painel usa o PowerShell e o WebView2
 
 O link sempre baixa a última versão publicada. As versões anteriores e o que mudou em cada uma estão em [Releases](https://github.com/BrieGabs/fila-chamados-extranet/releases) e no [CHANGELOG](CHANGELOG.md).
 
+#### Versões disponíveis
+
+| Versão | Data | O que mudou | Download |
+|---|---|---|---|
+| [**v1.1.0**](https://github.com/BrieGabs/fila-chamados-extranet/releases/tag/v1.1.0) (mais recente) | 10/10/2026 | Lê filas com mais de 20 chamados, filtro por status e andamento da leitura. O projeto passa a se chamar mininet. | [fila-chamados.zip](https://github.com/BrieGabs/fila-chamados-extranet/releases/download/v1.1.0/fila-chamados.zip) |
+| [v1.0.0](https://github.com/BrieGabs/fila-chamados-extranet/releases/tag/v1.0.0) | 10/10/2026 | Primeira versão segura: endereço da Extranet e dados locais cifrados, navegador restrito à Extranet. | [fila-chamados.zip](https://github.com/BrieGabs/fila-chamados-extranet/releases/download/v1.0.0/fila-chamados.zip) |
+
 > [!WARNING]
 > **Baixe só por aqui.** O script não é assinado digitalmente e roda com `-ExecutionPolicy Bypass`. Não use cópias recebidas por e-mail, chat, pendrive ou pasta compartilhada: elas podem ter sido alteradas.
 
@@ -434,6 +441,8 @@ O `main` é protegido: a versão entra por pull request, como qualquer outra mud
    ```
 
 6. Pronto: o workflow **Release** confere se `$Versao` e o `CHANGELOG.md` batem com a tag, gera o `fila-chamados.zip` a partir do código da tag, assina com Sigstore e publica a release com as notas do CHANGELOG, o SHA-256 e a assinatura (`fila-chamados.zip.sigstore.json`). Acompanhe em [Actions](https://github.com/BrieGabs/fila-chamados-extranet/actions/workflows/release.yml).
+
+7. Com a release publicada, acrescente a versão nova no topo da tabela [Versões disponíveis](#versões-disponíveis), com o link do ZIP dela, e mande por pull request.
 
 Para publicar de novo uma versão já lançada (por exemplo, se o workflow falhou), rode o **Release** manualmente em Actions, informando a tag.
 
