@@ -57,6 +57,10 @@ Export-HistoricoCsv @([pscustomobject]@{ codigo = '2'; saiuEm = '2026-09-24T17:5
 $csv = Get-Content -LiteralPath $planilha -Raw -Encoding UTF8
 Confere ($csv -match 'Horas DEV estimadas";"Horas DEV realizadas' -and $csv -match '"3,25"' -and $csv -match "'=2\+2") 'planilha: colunas de horas, sem formula'
 Remove-Item -LiteralPath $planilha
+Export-HistoricoCsv @([pscustomobject]@{ codigo = '7'; saiuEm = '2026-10-12T15:00:00.000Z'; chegadas = @('02/10/2026', '09/10/2026') }, [pscustomobject]@{ codigo = '8'; saiuEm = '2026-10-12T15:00:00.000Z' }) $planilha
+$csv = @(Import-Csv -LiteralPath $planilha -Delimiter ';' -Encoding UTF8)
+Confere ($csv[0].'Entrou na minha fila' -eq '09/10/2026' -and $csv[1].'Entrou na minha fila' -eq '') "planilha: entrou na fila pela ultima chegada, vazio sem chegada (veio '$($csv[0].'Entrou na minha fila')')"
+Remove-Item -LiteralPath $planilha
 $state = [pscustomobject]@{ usuario = 'ANA LIMA (EQUIPE 2)' }
 Update-HorasHistorico @([pscustomobject]@{ codigo = '3'; horasEstimadas = '3,00'; horasRealizadas = '5,75'; transferencias = @([pscustomobject]@{ dia = '05/09/2026'; para = 'ANA LIMA SOUZA' }) }, [pscustomobject]@{ codigo = '9'; horasEstimadas = '1,00'; horasRealizadas = '1,00' })
 $h = Get-Historico

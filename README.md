@@ -174,7 +174,7 @@ Cada chamado mostra o código, as etiquetas, o título, o cliente e o status atu
 
 ### Histórico
 
-Quando um chamado sai da sua fila, ele passa para o histórico, com o dia em que saiu e o último status que tinha com você.
+Quando um chamado sai da sua fila, ele passa para o histórico, com o dia em que entrou (a última vez que veio para você), o dia em que saiu e o último status que tinha com você.
 
 <p align="center">
   <img src="docs/historico.png" width="414" alt="Tela de histórico com quatro chamados que saíram da fila">
